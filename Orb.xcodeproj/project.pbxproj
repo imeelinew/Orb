@@ -1,0 +1,797 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000001 /* PermissionFlow in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000017 /* PermissionFlow */; };
+		A00000000000000000000002 /* Orb.icon in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* Orb.icon */; };
+		A00000000000000000000003 /* Scripts in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* Scripts */; };
+		A00000000000000000000004 /* Templates in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* Templates */; };
+		A00000000000000000000005 /* OrbFinderSync.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* OrbFinderSync.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A00000000000000000000019 /* FinderSyncExt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001B /* FinderSyncExt.swift */; };
+		A0000000000000000000001A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001C /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		45A5DBAD2FCC97D000262748 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 45A5DB972FCC97CF00262748 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 45A5DB9E2FCC97CF00262748;
+			remoteInfo = Orb;
+		};
+		45A5DBB72FCC97D000262748 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 45A5DB972FCC97CF00262748 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 45A5DB9E2FCC97CF00262748;
+			remoteInfo = Orb;
+		};
+		A00000000000000000000006 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 45A5DB972FCC97CF00262748 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000011;
+			remoteInfo = OrbFinderSync;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A00000000000000000000007 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A00000000000000000000005 /* OrbFinderSync.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+
+		45A5DB9F2FCC97CF00262748 /* Orb.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Orb.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		45A5DBAC2FCC97D000262748 /* OrbTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		45A5DBB62FCC97D000262748 /* OrbUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000008 /* OrbFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OrbFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000009 /* Orb.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Orb.icon; sourceTree = "<group>"; };
+		A0000000000000000000000A /* Scripts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Scripts; path = Resources/Scripts; sourceTree = SOURCE_ROOT; };
+		A0000000000000000000000B /* Templates */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Templates; path = Resources/Templates; sourceTree = SOURCE_ROOT; };
+		A0000000000000000000001B /* FinderSyncExt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSyncExt.swift; sourceTree = "<group>"; };
+		A0000000000000000000001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0000000000000000000001D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A0000000000000000000001E /* OrbFinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OrbFinderSync.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		45A5DBA12FCC97CF00262748 /* Orb */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Orb;
+			sourceTree = "<group>";
+		};
+		45A5DBAF2FCC97D000262748 /* OrbTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = OrbTests;
+			sourceTree = "<group>";
+		};
+		45A5DBB92FCC97D000262748 /* OrbUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = OrbUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		45A5DB9C2FCC97CF00262748 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000001 /* PermissionFlow in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		45A5DBA92FCC97D000262748 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		45A5DBB32FCC97D000262748 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		45A5DB962FCC97CF00262748 = {
+			isa = PBXGroup;
+			children = (
+				45A5DBA12FCC97CF00262748 /* Orb */,
+				A0000000000000000000000D /* OrbFinderSync */,
+				A00000000000000000000009 /* Orb.icon */,
+				A0000000000000000000000A /* Scripts */,
+				A0000000000000000000000B /* Templates */,
+				A00000000000000000000018 /* Packages */,
+				45A5DBAF2FCC97D000262748 /* OrbTests */,
+				45A5DBB92FCC97D000262748 /* OrbUITests */,
+				45A5DBA02FCC97CF00262748 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		45A5DBA02FCC97CF00262748 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				45A5DB9F2FCC97CF00262748 /* Orb.app */,
+				A00000000000000000000008 /* OrbFinderSync.appex */,
+				45A5DBAC2FCC97D000262748 /* OrbTests.xctest */,
+				45A5DBB62FCC97D000262748 /* OrbUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000000D /* OrbFinderSync */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000001B /* FinderSyncExt.swift */,
+				A0000000000000000000001C /* Assets.xcassets */,
+				A0000000000000000000001D /* Info.plist */,
+				A0000000000000000000001E /* OrbFinderSync.entitlements */,
+			);
+			path = OrbFinderSync;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000018 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		45A5DB9E2FCC97CF00262748 /* Orb */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45A5DBC02FCC97D000262748 /* Build configuration list for PBXNativeTarget "Orb" */;
+			buildPhases = (
+				45A5DB9B2FCC97CF00262748 /* Sources */,
+				45A5DB9C2FCC97CF00262748 /* Frameworks */,
+				45A5DB9D2FCC97CF00262748 /* Resources */,
+				A00000000000000000000007 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A00000000000000000000012 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				45A5DBA12FCC97CF00262748 /* Orb */,
+			);
+			name = Orb;
+			packageProductDependencies = (
+				A00000000000000000000017 /* PermissionFlow */,
+			);
+			productName = Orb;
+			productReference = 45A5DB9F2FCC97CF00262748 /* Orb.app */;
+			productType = "com.apple.product-type.application";
+		};
+		45A5DBAB2FCC97D000262748 /* OrbTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45A5DBC32FCC97D000262748 /* Build configuration list for PBXNativeTarget "OrbTests" */;
+			buildPhases = (
+				45A5DBA82FCC97D000262748 /* Sources */,
+				45A5DBA92FCC97D000262748 /* Frameworks */,
+				45A5DBAA2FCC97D000262748 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				45A5DBAE2FCC97D000262748 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				45A5DBAF2FCC97D000262748 /* OrbTests */,
+			);
+			name = OrbTests;
+			packageProductDependencies = (
+			);
+			productName = OrbTests;
+			productReference = 45A5DBAC2FCC97D000262748 /* OrbTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		45A5DBB52FCC97D000262748 /* OrbUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45A5DBC62FCC97D000262748 /* Build configuration list for PBXNativeTarget "OrbUITests" */;
+			buildPhases = (
+				45A5DBB22FCC97D000262748 /* Sources */,
+				45A5DBB32FCC97D000262748 /* Frameworks */,
+				45A5DBB42FCC97D000262748 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				45A5DBB82FCC97D000262748 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				45A5DBB92FCC97D000262748 /* OrbUITests */,
+			);
+			name = OrbUITests;
+			packageProductDependencies = (
+			);
+			productName = OrbUITests;
+			productReference = 45A5DBB62FCC97D000262748 /* OrbUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		A00000000000000000000011 /* OrbFinderSync */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000015 /* Build configuration list for PBXNativeTarget "OrbFinderSync" */;
+			buildPhases = (
+				A00000000000000000000010 /* Sources */,
+				A0000000000000000000000E /* Frameworks */,
+				A0000000000000000000000F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OrbFinderSync;
+			packageProductDependencies = (
+			);
+			productName = OrbFinderSync;
+			productReference = A00000000000000000000008 /* OrbFinderSync.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		45A5DB972FCC97CF00262748 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					A00000000000000000000011 = {
+						CreatedOnToolsVersion = 26.5;
+						DevelopmentTeam = 5Q5QT76MJU;
+						ProvisioningStyle = Automatic;
+					};
+					45A5DB9E2FCC97CF00262748 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					45A5DBAB2FCC97D000262748 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 45A5DB9E2FCC97CF00262748;
+					};
+					45A5DBB52FCC97D000262748 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 45A5DB9E2FCC97CF00262748;
+					};
+				};
+			};
+			buildConfigurationList = 45A5DB9A2FCC97CF00262748 /* Build configuration list for PBXProject "Orb" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 45A5DB962FCC97CF00262748;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A00000000000000000000016 /* XCLocalSwiftPackageReference "Vendor/PermissionFlow" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 45A5DBA02FCC97CF00262748 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				45A5DB9E2FCC97CF00262748 /* Orb */,
+				A00000000000000000000011 /* OrbFinderSync */,
+				45A5DBAB2FCC97D000262748 /* OrbTests */,
+				45A5DBB52FCC97D000262748 /* OrbUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		45A5DB9D2FCC97CF00262748 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000002 /* Orb.icon in Resources */,
+				A00000000000000000000003 /* Scripts in Resources */,
+				A00000000000000000000004 /* Templates in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		45A5DBAA2FCC97D000262748 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		45A5DBB42FCC97D000262748 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0000000000000000000001A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+
+/* Begin PBXSourcesBuildPhase section */
+		45A5DB9B2FCC97CF00262748 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		45A5DBA82FCC97D000262748 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		45A5DBB22FCC97D000262748 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000010 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000019 /* FinderSyncExt.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+
+/* Begin PBXTargetDependency section */
+		45A5DBAE2FCC97D000262748 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 45A5DB9E2FCC97CF00262748 /* Orb */;
+			targetProxy = 45A5DBAD2FCC97D000262748 /* PBXContainerItemProxy */;
+		};
+		45A5DBB82FCC97D000262748 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 45A5DB9E2FCC97CF00262748 /* Orb */;
+			targetProxy = 45A5DBB72FCC97D000262748 /* PBXContainerItemProxy */;
+		};
+		A00000000000000000000012 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000011 /* OrbFinderSync */;
+			targetProxy = A00000000000000000000006 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		45A5DBBE2FCC97D000262748 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		45A5DBBF2FCC97D000262748 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		45A5DBC12FCC97D000262748 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Orb;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Orb;
+				INFOPLIST_KEY_CFBundleIconName = Orb;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.Orb;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		45A5DBC22FCC97D000262748 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Orb;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Orb;
+				INFOPLIST_KEY_CFBundleIconName = Orb;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.Orb;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		45A5DBC42FCC97D000262748 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.OrbTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Orb.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Orb";
+			};
+			name = Debug;
+		};
+		45A5DBC52FCC97D000262748 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.OrbTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Orb.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Orb";
+			};
+			name = Release;
+		};
+		45A5DBC72FCC97D000262748 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.OrbUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = Orb;
+			};
+			name = Debug;
+		};
+		45A5DBC82FCC97D000262748 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.OrbUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = Orb;
+			};
+			name = Release;
+		};
+		A00000000000000000000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OrbFinderSync/OrbFinderSync.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OrbFinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.Orb.FinderSync;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A00000000000000000000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OrbFinderSync/OrbFinderSync.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5Q5QT76MJU;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OrbFinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eli.Orb.FinderSync;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		45A5DB9A2FCC97CF00262748 /* Build configuration list for PBXProject "Orb" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45A5DBBE2FCC97D000262748 /* Debug */,
+				45A5DBBF2FCC97D000262748 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		45A5DBC02FCC97D000262748 /* Build configuration list for PBXNativeTarget "Orb" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45A5DBC12FCC97D000262748 /* Debug */,
+				45A5DBC22FCC97D000262748 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		45A5DBC32FCC97D000262748 /* Build configuration list for PBXNativeTarget "OrbTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45A5DBC42FCC97D000262748 /* Debug */,
+				45A5DBC52FCC97D000262748 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		45A5DBC62FCC97D000262748 /* Build configuration list for PBXNativeTarget "OrbUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				45A5DBC72FCC97D000262748 /* Debug */,
+				45A5DBC82FCC97D000262748 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000015 /* Build configuration list for PBXNativeTarget "OrbFinderSync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000013 /* Debug */,
+				A00000000000000000000014 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A00000000000000000000016 /* XCLocalSwiftPackageReference "Vendor/PermissionFlow" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/PermissionFlow;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A00000000000000000000017 /* PermissionFlow */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PermissionFlow;
+		};
+/* End XCSwiftPackageProductDependency section */
+
+	};
+	rootObject = 45A5DB972FCC97CF00262748 /* Project object */;
+}

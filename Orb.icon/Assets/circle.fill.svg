@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25.4395 25.4395">
+ <defs>
+  <linearGradient id="gradient1" x1="5" x2="5" y2="25.4395" gradientUnits="userSpaceOnUse">
+   <stop offset="0" stop-color="rgba(255,255,255,0.85)" stop-opacity="1"/>
+   <stop offset="1" stop-color="rgba(226,226,226,0.85)" stop-opacity="1"/>
+  </linearGradient>
+ </defs>
+ <circle cx="12.71975" cy="12.71975" r="12.71975" fill="url(#gradient1)"/>
+</svg>
