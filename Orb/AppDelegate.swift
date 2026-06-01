@@ -4,7 +4,12 @@ import SwiftUI
 private let finderSyncBundleIdentifier = "com.eli.Orb.FinderSync"
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    private enum MenuBarPopoverMode {
+        case notification
+        case subtitleProgress
+    }
+
     private let notificationSeconds: TimeInterval = 5
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private lazy var mainWindowController = OrbWindowController()
@@ -13,9 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let inputCorrectionManager = InputCorrectionManager()
     private let clipboardManager = ClipboardManager()
     private var notificationPopover: NSPopover?
+    private var notificationPopoverMode: MenuBarPopoverMode?
     private var notificationDismissWorkItem: DispatchWorkItem?
     private var eventReadWorkItem: DispatchWorkItem?
     private var lastPopoverEventContent = ""
+    private var isClosingNotificationPopoverProgrammatically = false
+    private var suppressSubtitleProgressPopover = false
     private var eventSource: DispatchSourceFileSystemObject?
     private var eventDirectoryDescriptor: CInt = -1
     private var didDisableFinderExtensionForTermination = false
@@ -164,10 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func statusIcon() -> NSImage? {
-        NSImage(
-            systemSymbolName: "pointer.arrow.ipad.rays",
-            accessibilityDescription: "Orb"
-        ) ?? NSImage(systemSymbolName: "cursorarrow.rays", accessibilityDescription: "Orb")
+        NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Orb")
     }
 
     private func networkSpeedTitle(for sample: NetworkSpeedSample) -> NSAttributedString {
@@ -480,6 +485,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         guard lines.count >= 3 else { return }
 
+        if lines[0] == "progress" {
+            guard lines.count >= 6 else { return }
+            let rawProgress = Double(lines[4]) ?? 0
+            let actionID = lines[1]
+            let subtitle = lines[3]
+            if actionID == "subtitles", rawProgress <= 1, subtitle.hasPrefix("共 ") {
+                suppressSubtitleProgressPopover = false
+            }
+            if actionID == "subtitles", suppressSubtitleProgressPopover {
+                return
+            }
+            let progress = MenuBarNotificationView.ProgressState(
+                fraction: rawProgress > 1 ? rawProgress / 100 : rawProgress,
+                remainingText: lines[5]
+            )
+            showMenuBarPopover(
+                title: lines[2],
+                subtitle: subtitle,
+                actionID: actionID,
+                kind: .success,
+                progress: progress,
+                mode: .subtitleProgress
+            )
+            return
+        }
+
         let kind: MenuBarNotificationView.Kind = lines[0] == "error" ? .error : .success
         let actionID: String
         let title: String
@@ -493,6 +524,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             title = lines[1]
             subtitle = lines[2]
         }
+        if actionID == "subtitles" {
+            suppressSubtitleProgressPopover = false
+        }
         showMenuBarPopover(title: title, subtitle: subtitle, actionID: actionID, kind: kind)
     }
 
@@ -500,37 +534,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         title: String,
         subtitle: String,
         actionID: String,
-        kind: MenuBarNotificationView.Kind
+        kind: MenuBarNotificationView.Kind,
+        progress: MenuBarNotificationView.ProgressState? = nil,
+        mode: MenuBarPopoverMode = .notification
     ) {
         guard let button = statusItem.button else { return }
 
         notificationDismissWorkItem?.cancel()
-        notificationPopover?.close()
 
-        let hosting = NSHostingController(
-            rootView: MenuBarNotificationView(title: title, subtitle: subtitle, actionID: actionID, kind: kind)
-        )
-        hosting.view.frame = NSRect(x: 0, y: 0, width: 280, height: 200)
-        hosting.view.layoutSubtreeIfNeeded()
-        let fitted = hosting.view.fittingSize
-
-        let popover = NSPopover()
-        popover.behavior = .applicationDefined
-        popover.animates = true
-        popover.contentViewController = hosting
-        popover.contentSize = NSSize(width: 280, height: fitted.height)
-        notificationPopover = popover
-
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        DispatchQueue.main.async {
-            popover.contentViewController?.view.window?.makeKey()
+        if progress != nil,
+           let popover = notificationPopover,
+           popover.isShown,
+           notificationPopoverMode == mode,
+           let hosting = popover.contentViewController as? NSHostingController<MenuBarNotificationView> {
+            hosting.rootView = MenuBarNotificationView(
+                title: title,
+                subtitle: subtitle,
+                actionID: actionID,
+                kind: kind,
+                progress: progress
+            )
+            resizeMenuBarPopover(popover, hosting: hosting)
+            return
         }
 
-        let work = DispatchWorkItem { [weak self] in
-            self?.notificationPopover?.close()
+        closeNotificationPopoverProgrammatically()
+
+        let hosting = NSHostingController(
+            rootView: MenuBarNotificationView(
+                title: title,
+                subtitle: subtitle,
+                actionID: actionID,
+                kind: kind,
+                progress: progress
+            )
+        )
+
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+        popover.contentViewController = hosting
+        resizeMenuBarPopover(popover, hosting: hosting)
+        notificationPopover = popover
+        notificationPopoverMode = mode
+
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+        guard progress == nil else { return }
+
+        let work = DispatchWorkItem { [weak self, weak popover] in
+            guard let popover else { return }
+            self?.closeNotificationPopoverProgrammatically(popover)
         }
         notificationDismissWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + notificationSeconds, execute: work)
+    }
+
+    private func closeNotificationPopoverProgrammatically(_ popover: NSPopover? = nil) {
+        guard let popover = popover ?? notificationPopover else { return }
+        let isCurrentPopover = notificationPopover === popover
+        isClosingNotificationPopoverProgrammatically = true
+        popover.close()
+        isClosingNotificationPopoverProgrammatically = false
+        if isCurrentPopover {
+            notificationPopover = nil
+            notificationPopoverMode = nil
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        guard let popover = notification.object as? NSPopover,
+              notificationPopover === popover else {
+            return
+        }
+        if notificationPopoverMode == .subtitleProgress,
+           !isClosingNotificationPopoverProgrammatically {
+            suppressSubtitleProgressPopover = true
+        }
+        notificationPopover = nil
+        notificationPopoverMode = nil
+    }
+
+    private func resizeMenuBarPopover(
+        _ popover: NSPopover,
+        hosting: NSHostingController<MenuBarNotificationView>
+    ) {
+        let width: CGFloat = 280
+        let fitted = hosting.sizeThatFits(in: NSSize(width: width, height: .greatestFiniteMagnitude))
+        popover.contentSize = NSSize(width: width, height: ceil(fitted.height))
     }
 
     private func syncManagedDirectoryContents(from source: URL, to destination: URL, executable: Bool) throws {

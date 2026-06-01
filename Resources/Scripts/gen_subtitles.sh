@@ -20,6 +20,51 @@ notify() {
     emit_popover "$kind" "subtitles" "$title" "$subtitle"
 }
 
+progress_remaining_text() {
+    local percent="$1"
+    local now elapsed remaining
+    now=$(/bin/date +%s)
+    elapsed=$((now - start_ts))
+
+    if [ "$percent" -gt 2 ]; then
+        remaining=$((elapsed * (100 - percent) / percent))
+    else
+        remaining=$eta
+    fi
+
+    if [ "$remaining" -le 1 ]; then
+        printf "即将完成"
+    else
+        printf "约 %s" "$(fmt_time "$remaining")"
+    fi
+}
+
+notify_progress() {
+    local title="$1"
+    local subtitle="$2"
+    local percent="$3"
+    local remaining
+    [ "$percent" -lt 1 ] && percent=1
+    [ "$percent" -gt 99 ] && percent=99
+    remaining="$(progress_remaining_text "$percent")"
+    echo "PROGRESS: 生成字幕: $percent% | $title${subtitle:+ | $subtitle} | $remaining"
+    emit_popover_progress "subtitles" "$title" "$subtitle" "$percent" "$remaining"
+}
+
+notify_file_progress() {
+    local src="$1"
+    local index="$2"
+    local stage="$3"
+    local file_percent="$4"
+    local file_work="${todo_work[$index]}"
+    local completed_scaled percent subtitle
+
+    completed_scaled=$(((processed_work_units + file_work * file_percent / 100) * 100))
+    percent=$((completed_scaled / total_work_units))
+    subtitle="${index}/${#todo[@]} ${stage}: ${src:t}"
+    notify_progress "生成字幕中" "$subtitle" "$percent"
+}
+
 fmt_time() {
     local s=$1
     if [ "$s" -le 0 ]; then
@@ -264,7 +309,9 @@ fi
 
 # 预扫描：筛出真正要处理的文件 + 累计总时长做 ETA
 typeset -a todo
+typeset -a todo_work
 total_secs=0
+total_work_units=0
 pre_skipped=0
 for src in "$@"; do
     if [ ! -f "$src" ]; then
@@ -278,12 +325,17 @@ for src in "$@"; do
         continue
     fi
     todo+=("$src")
+    dur_int=0
     if command -v ffprobe >/dev/null 2>&1; then
         dur=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$src" 2>/dev/null)
         dur_int=${dur%.*}
         [ -z "$dur_int" ] && dur_int=0
         total_secs=$((total_secs + dur_int))
     fi
+    work_units=$dur_int
+    [ "$work_units" -le 0 ] && work_units=60
+    todo_work+=("$work_units")
+    total_work_units=$((total_work_units + work_units))
 done
 
 if [ "${#todo[@]}" -eq 0 ]; then
@@ -293,38 +345,67 @@ fi
 
 # 实测 whisper-cpp medium 在 Apple Silicon (Metal) 上约 13x 实时，
 # 每个文件再加 2s 的 ffmpeg 抽音 + whisper 启动开销。
-eta=$(( total_secs / 13 + ${#todo[@]} * 2 ))
+eta=$(( total_work_units / 13 + ${#todo[@]} * 2 ))
+start_ts=$(/bin/date +%s)
 
 if [ "$total_secs" -gt 0 ]; then
-    notify "success" "开始生成字幕" "共 ${#todo[@]} 个，预计 $(fmt_time $eta)"
+    notify_progress "生成字幕中" "共 ${#todo[@]} 个，预计 $(fmt_time $eta)" 1
 else
-    notify "success" "开始生成字幕" "共 ${#todo[@]} 个，后台运行中…"
+    notify_progress "生成字幕中" "共 ${#todo[@]} 个，后台运行中" 1
 fi
-
-start_ts=$(/bin/date +%s)
 
 ok=0
 fail=0
 skipped=$pre_skipped
+processed_work_units=0
+typeset -a completed_files
 
-for src in "${todo[@]}"; do
+for (( i = 1; i <= ${#todo[@]}; i++ )); do
+    src="${todo[$i]}"
     stem="${src%.*}"
     srt="$stem.srt"
+    file_work="${todo_work[$i]}"
 
-    tmp_base=$(/usr/bin/mktemp -t sr-whisper) || { fail=$((fail+1)); continue; }
+    tmp_base=$(/usr/bin/mktemp -t sr-whisper) || {
+        fail=$((fail+1))
+        processed_work_units=$((processed_work_units + file_work))
+        continue
+    }
     tmp_wav="${tmp_base}.wav"
 
+    notify_file_progress "$src" "$i" "抽取音频" 5
     echo "--- ffmpeg: $src"
     if ffmpeg -y -i "$src" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_wav" -loglevel error; then
+        notify_file_progress "$src" "$i" "识别字幕" 12
         echo "--- whisper-cli: $src"
-        if whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$stem"; then
+        whisper_start_ts=$(/bin/date +%s)
+        whisper_est=$((file_work / 13 + 2))
+        [ "$whisper_est" -lt 6 ] && whisper_est=6
+
+        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$stem" &
+        whisper_pid=$!
+        while kill -0 "$whisper_pid" 2>/dev/null; do
+            /bin/sleep 2
+            kill -0 "$whisper_pid" 2>/dev/null || break
+            whisper_elapsed=$(( $(/bin/date +%s) - whisper_start_ts ))
+            whisper_percent=$((12 + whisper_elapsed * 76 / whisper_est))
+            [ "$whisper_percent" -gt 88 ] && whisper_percent=88
+            notify_file_progress "$src" "$i" "识别字幕" "$whisper_percent"
+        done
+        wait "$whisper_pid"
+        whisper_status=$?
+
+        if [ "$whisper_status" -eq 0 ]; then
+            notify_file_progress "$src" "$i" "整理字幕" 92
             if normalize_srt "$srt"; then
                 echo "NORMALIZED: $srt"
             else
                 echo "WARN normalize failed, keeping original: $srt"
             fi
             ok=$((ok+1))
+            completed_files+=("${src:t}")
             echo "OK: $srt"
+            notify_file_progress "$src" "$i" "刷新 Finder" 97
             /usr/bin/osascript -e "tell application \"Finder\" to update (POSIX file \"${src:h}\" as alias)" 2>/dev/null
         else
             fail=$((fail+1))
@@ -336,12 +417,17 @@ for src in "${todo[@]}"; do
     fi
 
     /bin/rm -f "$tmp_base" "$tmp_wav"
+    processed_work_units=$((processed_work_units + file_work))
 done
 
 end_ts=$(/bin/date +%s)
 elapsed=$((end_ts - start_ts))
 
-msg="成功 $ok | 用时 $(fmt_time $elapsed)"
+if [ "$ok" -eq 1 ]; then
+    msg="${completed_files[1]} | 用时 $(fmt_time $elapsed)"
+else
+    msg="$ok 个文件 | 用时 $(fmt_time $elapsed)"
+fi
 [ "$fail" -gt 0 ] && msg="$msg | 失败 $fail"
 [ "$skipped" -gt 0 ] && msg="$msg | 跳过 $skipped"
 if [ "$fail" -gt 0 ]; then

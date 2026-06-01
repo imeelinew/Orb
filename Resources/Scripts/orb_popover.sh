@@ -15,3 +15,18 @@ emit_popover() {
     } > "$tmp"
     /bin/mv "$tmp" "$ORB_EVENT_FILE"
 }
+
+emit_popover_progress() {
+    /bin/mkdir -p "$ORB_EVENT_DIR"
+    local tmp="$ORB_EVENT_FILE.$$"
+    {
+        print -r -- "progress"
+        print -r -- "$1"
+        print -r -- "$2"
+        print -r -- "$3"
+        print -r -- "$4"
+        print -r -- "$5"
+        /bin/date +%s
+    } > "$tmp"
+    /bin/mv "$tmp" "$ORB_EVENT_FILE"
+}

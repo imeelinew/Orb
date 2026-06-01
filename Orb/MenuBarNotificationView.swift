@@ -6,10 +6,30 @@ struct MenuBarNotificationView: View {
     let subtitle: String
     let actionID: String
     let kind: Kind
+    let progress: ProgressState?
 
     enum Kind {
         case success
         case error
+    }
+
+    struct ProgressState: Equatable {
+        let fraction: Double
+        let remainingText: String
+    }
+
+    init(
+        title: String,
+        subtitle: String,
+        actionID: String,
+        kind: Kind,
+        progress: ProgressState? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.actionID = actionID
+        self.kind = kind
+        self.progress = progress
     }
 
     private var iconAssetName: String? {
@@ -29,6 +49,8 @@ struct MenuBarNotificationView: View {
 
     private var iconName: String {
         switch actionID {
+        case "subtitles":
+            return "captions.bubble"
         case "new-text":
             return "doc.text"
         case "new-markdown":
@@ -168,7 +190,19 @@ struct MenuBarNotificationView: View {
         }
     }
 
+    private var clampedProgress: CGFloat {
+        CGFloat(min(max(progress?.fraction ?? 0, 0), 1))
+    }
+
     var body: some View {
+        if let progress {
+            progressBody(progress)
+        } else {
+            notificationBody
+        }
+    }
+
+    private var notificationBody: some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
                 Circle()
@@ -191,6 +225,61 @@ struct MenuBarNotificationView: View {
                         .truncationMode(.tail)
                 }
             }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(width: 280, alignment: .leading)
+    }
+
+    private func progressBody(_ progress: ProgressState) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(iconGradient)
+
+                iconView
+            }
+            .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(verbatim: title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 8)
+
+                    Text(verbatim: progress.remainingText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .monospacedDigit()
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+
+                if !subtitle.isEmpty {
+                    Text(verbatim: subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
+
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.secondary.opacity(0.16))
+
+                        Capsule()
+                            .fill(Color(red: 0.18, green: 0.78, blue: 0.35))
+                            .frame(width: max(6, proxy.size.width * clampedProgress))
+                    }
+                }
+                .frame(height: 5)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
