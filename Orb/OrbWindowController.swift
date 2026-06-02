@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 @MainActor
 final class OrbWindowController: NSObject, NSWindowDelegate {
@@ -13,14 +12,18 @@ final class OrbWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let hosting = NSHostingController(rootView: OrbView())
-        let win = NSWindow(contentViewController: hosting)
-        let contentSize = NSSize(width: 720, height: 600)
-        let minimumContentSize = NSSize(width: 650, height: 540)
+        let prototype = OrbPrototypeViewController()
+        let win = NSWindow(contentViewController: prototype)
+        let contentSize = NSSize(width: 980, height: 720)
+        let minimumContentSize = NSSize(width: 700, height: 560)
 
-        win.title = "右键菜单"
+        win.title = "Orb"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         win.isReleasedWhenClosed = false
+        win.isOpaque = false
+        win.backgroundColor = .clear
+        win.titlebarAppearsTransparent = true
+        win.titleVisibility = .hidden
         win.setContentSize(contentSize)
         win.minSize = win.frameRect(forContentRect: NSRect(origin: .zero, size: minimumContentSize)).size
         win.center()
@@ -35,5 +38,17 @@ final class OrbWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         window = nil
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    func windowWillStartLiveResize(_ notification: Notification) {
+        (window?.contentViewController as? OrbPrototypeViewController)?.windowWillStartLiveResize()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        (window?.contentViewController as? OrbPrototypeViewController)?.windowDidEndLiveResize()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        (window?.contentViewController as? OrbPrototypeViewController)?.windowDidResize()
     }
 }
