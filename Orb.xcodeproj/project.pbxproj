@@ -55,7 +55,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-
 		45A5DB9F2FCC97CF00262748 /* Orb.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Orb.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		45A5DBAC2FCC97D000262748 /* OrbTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		45A5DBB62FCC97D000262748 /* OrbUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OrbUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -68,7 +67,6 @@
 		A0000000000000000000001D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A0000000000000000000001E /* OrbFinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OrbFinderSync.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		45A5DBA12FCC97CF00262748 /* Orb */ = {
@@ -268,11 +266,6 @@
 				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
-					A00000000000000000000011 = {
-						CreatedOnToolsVersion = 26.5;
-						DevelopmentTeam = 5Q5QT76MJU;
-						ProvisioningStyle = Automatic;
-					};
 					45A5DB9E2FCC97CF00262748 = {
 						CreatedOnToolsVersion = 26.5;
 					};
@@ -283,6 +276,11 @@
 					45A5DBB52FCC97D000262748 = {
 						CreatedOnToolsVersion = 26.5;
 						TestTargetID = 45A5DB9E2FCC97CF00262748;
+					};
+					A00000000000000000000011 = {
+						CreatedOnToolsVersion = 26.5;
+						DevelopmentTeam = 5Q5QT76MJU;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -346,7 +344,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-
 /* Begin PBXSourcesBuildPhase section */
 		45A5DB9B2FCC97CF00262748 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -378,7 +375,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
 
 /* Begin PBXTargetDependency section */
 		45A5DBAE2FCC97D000262748 /* PBXTargetDependency */ = {
@@ -791,7 +787,6 @@
 			productName = PermissionFlow;
 		};
 /* End XCSwiftPackageProductDependency section */
-
 	};
 	rootObject = 45A5DB972FCC97CF00262748 /* Project object */;
 }

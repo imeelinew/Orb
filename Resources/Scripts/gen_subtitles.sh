@@ -431,8 +431,8 @@ fi
 [ "$fail" -gt 0 ] && msg="$msg | 失败 $fail"
 [ "$skipped" -gt 0 ] && msg="$msg | 跳过 $skipped"
 if [ "$fail" -gt 0 ]; then
-    notify "error" "字幕完成" "$msg"
+    notify "error" "字幕生成完成" "$msg"
 else
-    notify "success" "字幕完成" "$msg"
+    notify "success" "字幕生成完成" "$msg"
 fi
 echo "DONE: ok=$ok fail=$fail skipped=$skipped elapsed=${elapsed}s"
