@@ -26,6 +26,12 @@ final class WindowOperationManager {
 
     private var eventHandler: EventHandlerRef?
     private var hotKeyRefs: [EventHotKeyRef?] = []
+    private var suppressWindowOperationsUntil: Date?
+
+    /// Suppresses AX window operations briefly (e.g. while presenting the settings window).
+    func suppressWindowOperations(for duration: TimeInterval = 0.35) {
+        suppressWindowOperationsUntil = Date().addingTimeInterval(duration)
+    }
 
     func start() {
         guard eventHandler == nil else { return }
@@ -47,8 +53,16 @@ final class WindowOperationManager {
             guard status == noErr else { return status }
 
             let manager = Unmanaged<WindowOperationManager>.fromOpaque(userData).takeUnretainedValue()
-            Task { @MainActor in
-                manager.handleHotKey(id: hotKeyID.id)
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    manager.handleHotKey(id: hotKeyID.id)
+                }
+            } else {
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        manager.handleHotKey(id: hotKeyID.id)
+                    }
+                }
             }
             return noErr
         }
@@ -136,6 +150,7 @@ final class WindowOperationManager {
 
     func minimizeOtherApplicationWindows() {
         guard WindowOperationConfiguration.isEnabled(.minimizeOthers) else { return }
+        guard !shouldSkipWindowOperation() else { return }
         guard AXIsProcessTrusted() else { return }
         guard let frontmostApplication = NSWorkspace.shared.frontmostApplication else { return }
 
@@ -147,9 +162,26 @@ final class WindowOperationManager {
     }
 
     private func performWindowOperation(_ layout: WindowLayout) {
+        guard !shouldSkipWindowOperation() else { return }
         guard AXIsProcessTrusted() else { return }
         guard let target = focusedWindow() else { return }
         move(target, to: layout)
+    }
+
+    private func shouldSkipWindowOperation() -> Bool {
+        if let suppressWindowOperationsUntil, Date() < suppressWindowOperationsUntil {
+            return true
+        }
+
+        // While Orb owns the key window but Workspace still reports another app as
+        // frontmost, applying AX moves would hit the wrong application.
+        if NSApp.keyWindow != nil,
+           let frontmost = NSWorkspace.shared.frontmostApplication,
+           frontmost.bundleIdentifier != Bundle.main.bundleIdentifier {
+            return true
+        }
+
+        return false
     }
 
     private func move(_ target: WindowTarget, to layout: WindowLayout) {

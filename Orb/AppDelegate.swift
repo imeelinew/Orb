@@ -297,32 +297,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             to: menu,
             operation: .leftHalf,
             action: #selector(moveFocusedWindowLeftHalf),
-            keyEquivalent: String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!))
+            shortcutLabel: "⌘←"
         )
         addWindowOperationItem(
             to: menu,
             operation: .rightHalf,
             action: #selector(moveFocusedWindowRightHalf),
-            keyEquivalent: String(Character(UnicodeScalar(NSRightArrowFunctionKey)!))
+            shortcutLabel: "⌘→"
         )
         addWindowOperationItem(
             to: menu,
             operation: .maximized,
             action: #selector(maximizeFocusedWindow),
-            keyEquivalent: String(Character(UnicodeScalar(NSUpArrowFunctionKey)!))
+            shortcutLabel: "⌘↑"
         )
         addWindowOperationItem(
             to: menu,
             operation: .centered,
             action: #selector(centerFocusedWindow),
-            keyEquivalent: String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
+            shortcutLabel: "⌘↓"
         )
         addWindowOperationItem(
             to: menu,
             operation: .minimizeOthers,
             action: #selector(minimizeOtherApplicationWindows),
-            keyEquivalent: String(Character(UnicodeScalar(NSDownArrowFunctionKey)!)),
-            modifierMask: [.command, .option]
+            shortcutLabel: "⌘⌥↓"
         )
         if !menu.items.isEmpty {
             menu.addItem(.separator())
@@ -344,13 +343,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         to menu: NSMenu,
         operation: WindowOperation,
         action: Selector,
-        keyEquivalent: String = "",
-        modifierMask: NSEvent.ModifierFlags = [.command]
+        shortcutLabel: String
     ) {
         guard WindowOperationConfiguration.isEnabled(operation) else { return }
-        let item = NSMenuItem(title: operation.title, action: action, keyEquivalent: keyEquivalent)
+        let title = shortcutLabel.isEmpty ? operation.title : "\(operation.title)  \(shortcutLabel)"
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        item.keyEquivalentModifierMask = keyEquivalent.isEmpty ? [] : modifierMask
         item.image = NSImage(systemSymbolName: operation.symbolName, accessibilityDescription: operation.title)
         item.image?.isTemplate = true
         menu.addItem(item)
@@ -668,6 +666,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func showMainWindow() {
+        windowOperationManager.suppressWindowOperations()
         mainWindowController.show()
     }
 
