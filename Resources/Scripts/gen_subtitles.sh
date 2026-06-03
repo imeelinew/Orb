@@ -11,6 +11,13 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 MODEL="$HOME/whisper-models/ggml-medium.bin"
 WHISPER_LANG="auto"
+STATE_DIR="$(dirname "$0")/subtitle-jobs"
+current_src=""
+current_state_file=""
+tmp_base=""
+tmp_wav=""
+srt=""
+child_pid=""
 
 notify() {
     local kind="$1"
@@ -19,6 +26,78 @@ notify() {
     echo "NOTICE: 生成字幕: $title${subtitle:+ | $subtitle}"
     emit_popover "$kind" "subtitles" "$title" "$subtitle"
 }
+
+job_state_file() {
+    local src="$1"
+    /usr/bin/python3 - "$STATE_DIR" "$src" <<'PY'
+import hashlib
+import os
+import sys
+
+state_dir, path = sys.argv[1], sys.argv[2]
+os.makedirs(state_dir, exist_ok=True)
+name = hashlib.sha256(path.encode("utf-8")).hexdigest() + ".json"
+print(os.path.join(state_dir, name))
+PY
+}
+
+write_job_state() {
+    local stage="$1"
+    local active_child_pid="${2:-}"
+    [ -n "$current_src" ] || return 0
+    current_state_file="$(job_state_file "$current_src")"
+    /usr/bin/python3 - "$current_state_file" "$current_src" "$$" "$stage" "$active_child_pid" "$tmp_base" "$tmp_wav" "$srt" <<'PY'
+import json
+import os
+import sys
+import time
+
+state_file, path, script_pid, stage, child_pid, tmp_base, tmp_wav, srt = sys.argv[1:9]
+payload = {
+    "path": path,
+    "scriptPID": int(script_pid),
+    "childPID": int(child_pid) if child_pid else None,
+    "stage": stage,
+    "updatedAt": time.time(),
+    "temporaryFiles": [value for value in (tmp_base, tmp_wav, srt) if value],
+}
+tmp = state_file + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(payload, f, ensure_ascii=False)
+os.replace(tmp, state_file)
+PY
+}
+
+cleanup_current_job() {
+    local dir filename stem ext tmp_video
+    if [ -n "$child_pid" ]; then
+        /bin/kill "$child_pid" 2>/dev/null || true
+        wait "$child_pid" 2>/dev/null || true
+        child_pid=""
+    fi
+    if [ -n "$tmp_base" ] || [ -n "$tmp_wav" ] || [ -n "$srt" ]; then
+        /bin/rm -f "$tmp_base" "$tmp_wav" "$srt"
+    fi
+    if [ -n "$current_src" ]; then
+        dir="${current_src:h}"
+        filename="${current_src:t}"
+        stem="${filename%.*}"
+        ext="${filename##*.}"
+        tmp_video="$dir/.${stem}.orb-subtitled.$$.$ext"
+        /bin/rm -f "$tmp_video"
+    fi
+    if [ -n "$current_state_file" ]; then
+        /bin/rm -f "$current_state_file"
+    fi
+}
+
+handle_stop_signal() {
+    echo "STOP subtitle generation: ${current_src:-unknown}"
+    cleanup_current_job
+    exit 143
+}
+
+trap handle_stop_signal TERM INT
 
 progress_remaining_text() {
     local percent="$1"
@@ -352,7 +431,7 @@ embed_subtitles() {
             "-metadata:s:s:${subtitle_index}" "title=Orb Subtitles" \
             "-metadata:s:s:${subtitle_index}" "handler_name=Orb Subtitles" \
             "-disposition:s:${subtitle_index}" default \
-            "$tmp_video"
+            "$tmp_video" &
     else
         ffmpeg -y -loglevel error \
             -i "$src" -i "$srt" \
@@ -362,10 +441,15 @@ embed_subtitles() {
             "-metadata:s:s:${subtitle_index}" "title=Orb Subtitles" \
             "-metadata:s:s:${subtitle_index}" "handler_name=Orb Subtitles" \
             "-disposition:s:${subtitle_index}" default \
-            "$tmp_video"
+            "$tmp_video" &
     fi
+    child_pid=$!
+    write_job_state "embed-subtitles" "$child_pid"
+    wait "$child_pid"
+    embed_status=$?
+    child_pid=""
 
-    if [ "$?" -ne 0 ]; then
+    if [ "$embed_status" -ne 0 ]; then
         /bin/rm -f "$tmp_video"
         return 1
     fi
@@ -451,6 +535,8 @@ typeset -a completed_files
 
 for (( i = 1; i <= ${#todo[@]}; i++ )); do
     src="${todo[$i]}"
+    current_src="$src"
+    current_state_file="$(job_state_file "$current_src")"
     stem="${src%.*}"
     file_work="${todo_work[$i]}"
 
@@ -464,7 +550,13 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
 
     notify_file_progress "$src" "$i" "抽取音频" 5
     echo "--- ffmpeg: $src"
-    if ffmpeg -y -i "$src" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_wav" -loglevel error; then
+    ffmpeg -y -i "$src" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_wav" -loglevel error &
+    child_pid=$!
+    write_job_state "extract-audio" "$child_pid"
+    wait "$child_pid"
+    ffmpeg_status=$?
+    child_pid=""
+    if [ "$ffmpeg_status" -eq 0 ]; then
         notify_file_progress "$src" "$i" "识别字幕" 12
         echo "--- whisper-cli: $src"
         whisper_start_ts=$(/bin/date +%s)
@@ -472,20 +564,24 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         [ "$whisper_est" -lt 6 ] && whisper_est=6
 
         whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$tmp_base" &
-        whisper_pid=$!
-        while kill -0 "$whisper_pid" 2>/dev/null; do
+        child_pid=$!
+        write_job_state "recognize-subtitles" "$child_pid"
+        while kill -0 "$child_pid" 2>/dev/null; do
             /bin/sleep 2
-            kill -0 "$whisper_pid" 2>/dev/null || break
+            kill -0 "$child_pid" 2>/dev/null || break
             whisper_elapsed=$(( $(/bin/date +%s) - whisper_start_ts ))
             whisper_percent=$((12 + whisper_elapsed * 76 / whisper_est))
             [ "$whisper_percent" -gt 88 ] && whisper_percent=88
+            write_job_state "recognize-subtitles" "$child_pid"
             notify_file_progress "$src" "$i" "识别字幕" "$whisper_percent"
         done
-        wait "$whisper_pid"
+        wait "$child_pid"
         whisper_status=$?
+        child_pid=""
 
         if [ "$whisper_status" -eq 0 ]; then
             notify_file_progress "$src" "$i" "整理字幕" 92
+            write_job_state "normalize-subtitles"
             if normalize_srt "$srt"; then
                 echo "NORMALIZED: $srt"
             else
@@ -516,7 +612,12 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         echo "FAIL ffmpeg: $src"
     fi
 
-    /bin/rm -f "$tmp_base" "$tmp_wav" "$srt"
+    cleanup_current_job
+    current_src=""
+    current_state_file=""
+    tmp_base=""
+    tmp_wav=""
+    srt=""
     processed_work_units=$((processed_work_units + file_work))
 done
 

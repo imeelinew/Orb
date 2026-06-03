@@ -1,8 +1,15 @@
 import Cocoa
+import Darwin
 import FinderSync
 
 @objc(FinderSyncExt)
 final class FinderSyncExt: FIFinderSync {
+    private struct SubtitleJob: Decodable {
+        let path: String
+        let scriptPID: Int32?
+        let childPID: Int32?
+    }
+
     private struct Service {
         let id: String
         let title: String
@@ -15,6 +22,7 @@ final class FinderSyncExt: FIFinderSync {
     private let services: [Service] = [
         Service(id: "subtitles", title: "生成字幕", filename: "gen_subtitles.sh", symbol: "captions.bubble", assetName: nil, allowsEmpty: false),
         Service(id: "remove-subtitles", title: "移除字幕", filename: "remove_subtitles.sh", symbol: "captions.bubble", assetName: nil, allowsEmpty: false),
+        Service(id: "stop-subtitles", title: "停止生成字幕", filename: "stop_subtitles.sh", symbol: "stop.circle", assetName: nil, allowsEmpty: false),
         Service(id: "new-text", title: "新建文本文件", filename: "new_txt.sh", symbol: "doc.text", assetName: nil, allowsEmpty: false),
         Service(id: "new-markdown", title: "新建 Markdown 文件", filename: "new_md.sh", symbol: "chevron.left.forwardslash.chevron.right", assetName: "logo-markdown", allowsEmpty: false),
         Service(id: "new-word", title: "新建 Word 文档", filename: "new_docx.sh", symbol: "doc.richtext", assetName: nil, allowsEmpty: false),
@@ -45,8 +53,13 @@ final class FinderSyncExt: FIFinderSync {
         guard !enabledServiceIDs.isEmpty else {
             return menu
         }
+        let selectedTargets = currentTargetURLs()
+        let canStopSubtitles = hasActiveSubtitleJob(for: selectedTargets)
 
         for (index, service) in services.enumerated() where enabledServiceIDs.contains(service.id) {
+            if service.id == "stop-subtitles", !canStopSubtitles {
+                continue
+            }
             let item = NSMenuItem(
                 title: service.title,
                 action: #selector(runScript(_:)),
@@ -83,6 +96,71 @@ final class FinderSyncExt: FIFinderSync {
         } catch {
             return Set(services.map(\.id))
         }
+    }
+
+    private func currentTargetURLs() -> [URL] {
+        let controller = FIFinderSyncController.default()
+        let selected = controller.selectedItemURLs() ?? []
+        if !selected.isEmpty {
+            return selected
+        }
+        return controller.targetedURL().map { [$0] } ?? []
+    }
+
+    private func hasActiveSubtitleJob(for targets: [URL]) -> Bool {
+        let targetPaths = Set(targets.map(\.path))
+        guard !targetPaths.isEmpty else {
+            return false
+        }
+        return activeSubtitleJobs().contains { job in
+            targetPaths.contains(job.path)
+        }
+    }
+
+    private func activeSubtitleJobs() -> [SubtitleJob] {
+        guard let stateDirectory = subtitleJobsDirectory(),
+              let urls = try? FileManager.default.contentsOfDirectory(
+                at: stateDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+              ) else {
+            return []
+        }
+
+        return urls.compactMap { url in
+            guard url.pathExtension == "json",
+                  let data = try? Data(contentsOf: url),
+                  let job = try? JSONDecoder().decode(SubtitleJob.self, from: data),
+                  isProcessRunning(job.scriptPID) || isProcessRunning(job.childPID) else {
+                return nil
+            }
+            return job
+        }
+    }
+
+    private func subtitleJobsDirectory() -> URL? {
+        do {
+            return try FileManager.default
+                .url(
+                    for: .applicationScriptsDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: false
+                )
+                .appendingPathComponent("subtitle-jobs", isDirectory: true)
+        } catch {
+            return nil
+        }
+    }
+
+    private func isProcessRunning(_ pid: Int32?) -> Bool {
+        guard let pid, pid > 0 else {
+            return false
+        }
+        if kill(pid, 0) == 0 {
+            return true
+        }
+        return errno == EPERM
     }
 
     private func cachedMenuIcon(for service: Service, color: NSColor, isDark: Bool) -> NSImage? {

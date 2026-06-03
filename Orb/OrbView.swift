@@ -564,6 +564,8 @@ private struct MenuActionIcon: View {
         switch actionID {
         case "subtitles", "remove-subtitles":
             return "captions.bubble"
+        case "stop-subtitles":
+            return "stop.circle"
         case "new-text":
             return "doc.text"
         case "new-markdown":

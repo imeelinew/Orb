@@ -707,6 +707,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             showSubtitleCompletionPopover(clearAfterClose: true)
             return
         }
+        if actionID == "stop-subtitles", kind == .success {
+            clearSubtitleMenuBarProgress()
+        }
         showMenuBarPopover(title: title, subtitle: subtitle, actionID: actionID, kind: kind)
     }
 
