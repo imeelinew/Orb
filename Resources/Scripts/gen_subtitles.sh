@@ -16,6 +16,9 @@ LLM_OPENROUTER_API_KEY="sk-mHu8S0JRQkJravH3fNLi2RDmQCOBVKXTnVqfrYEMsdXIFWk5us5e9
 LLM_OPENROUTER_BASE_URL="https://opencode.ai/zen/go/v1/chat/completions"
 LLM_OPENROUTER_MODEL="mimo-v2.5"
 LLM_SEGMENTATION_BATCH_SIZE=160
+LLM_TRANSLATION_ENABLED=1
+LLM_TRANSLATION_BATCH_CUES=80
+LLM_TRANSLATION_CONTEXT_CUES=8
 STATE_DIR="$(dirname "$0")/subtitle-jobs"
 current_src=""
 current_state_file=""
@@ -1087,6 +1090,286 @@ except Exception:
 PY
 }
 
+translate_srt_to_bilingual() {
+    local srt_path="$1"
+    [ "$LLM_TRANSLATION_ENABLED" = "1" ] || return 0
+    [ -s "$srt_path" ] || return 0
+    [ -n "$LLM_OPENROUTER_API_KEY" ] || return 0
+
+    /usr/bin/python3 - \
+        "$srt_path" \
+        "$LLM_OPENROUTER_BASE_URL" \
+        "$LLM_OPENROUTER_MODEL" \
+        "$LLM_OPENROUTER_API_KEY" \
+        "$LLM_TRANSLATION_BATCH_CUES" \
+        "$LLM_TRANSLATION_CONTEXT_CUES" <<'PY'
+import json
+import os
+import re
+import sys
+import tempfile
+import unicodedata
+import urllib.request
+
+path, base_url, model, api_key, batch_size_text, context_size_text = sys.argv[1:7]
+batch_size = max(10, int(batch_size_text or "80"))
+context_size = max(0, int(context_size_text or "8"))
+MAX_ZH_LINE_WIDTH = 28.0
+
+def parse_time(value):
+    match = re.match(r"(\d+):(\d{2}):(\d{2}),(\d{3})", value.strip())
+    if not match:
+        raise ValueError(f"bad srt timestamp: {value!r}")
+    h, m, s, ms = map(int, match.groups())
+    return ((h * 60 + m) * 60 + s) * 1000 + ms
+
+def clean_text(lines):
+    text = " ".join(line.strip() for line in lines if line.strip())
+    return re.sub(r"\s+", " ", text).strip()
+
+def char_width(ch):
+    if ch.isspace():
+        return 0.5
+    return 1.0 if unicodedata.east_asian_width(ch) in ("W", "F", "A") else 0.55
+
+def width(text):
+    return sum(char_width(ch) for ch in text)
+
+def wrap_zh(text):
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return []
+    if width(text) <= MAX_ZH_LINE_WIDTH:
+        return [text]
+
+    parts = []
+    buf = ""
+    for ch in text:
+        candidate = buf + ch
+        if buf and width(candidate) > MAX_ZH_LINE_WIDTH and ch not in "，。！？；：、,.!?;:%)]}》」』”’":
+            parts.append(buf.strip())
+            buf = ch
+        else:
+            buf = candidate
+    if buf.strip():
+        parts.append(buf.strip())
+    if len(parts) <= 2:
+        return parts
+
+    first = parts[0]
+    rest = "".join(parts[1:])
+    return [first, rest] if rest else [first]
+
+def parse_blocks(raw):
+    blocks = re.split(r"\n\s*\n", raw.strip(), flags=re.MULTILINE)
+    parsed = []
+    for fallback_index, block in enumerate(blocks, 1):
+        lines = [line.rstrip("\r") for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        time_index = next((i for i, line in enumerate(lines) if "-->" in line), -1)
+        if time_index < 0:
+            continue
+        start_text, end_text = [part.strip().split()[0] for part in lines[time_index].split("-->", 1)]
+        parse_time(start_text)
+        parse_time(end_text)
+        cue_id = int(lines[0]) if lines[0].isdigit() else fallback_index
+        en_lines = lines[time_index + 1:]
+        en_text = clean_text(en_lines)
+        if en_text:
+            parsed.append({
+                "id": cue_id,
+                "time": lines[time_index],
+                "en_lines": en_lines,
+                "en": en_text,
+                "zh": "",
+            })
+    return parsed
+
+def parse_json_content(content):
+    content = content.strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*", "", content)
+        content = re.sub(r"\s*```$", "", content)
+    if content.startswith("{"):
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+    candidates = []
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for index, ch in enumerate(content):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                candidates.append(content[start:index + 1])
+                start = None
+
+    for candidate in reversed(candidates):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    raise ValueError("no valid JSON object in LLM response")
+
+def call_llm(payload):
+    request = urllib.request.Request(
+        base_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Orb/1.0 (macOS) OpenAI-compatible client",
+            "HTTP-Referer": "https://orb.local",
+            "X-Title": "Orb Bilingual Subtitle Translation",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    message = data["choices"][0]["message"]
+    content = (message.get("content") or message.get("reasoning_content") or "").strip()
+    return parse_json_content(content)
+
+def translate_batch(cues, start, end):
+    translations, failures = translate_batch_range(cues, start, end)
+    if failures:
+        print(
+            f"WARN bilingual translation partial fallback: {failures} cue(s) kept English-only",
+            file=sys.stderr,
+        )
+    return translations
+
+def translate_batch_range(cues, start, end):
+    context_start = max(0, start - context_size)
+    context_end = min(len(cues), end + context_size)
+    target_ids = [cue["id"] for cue in cues[start:end]]
+    context = [{"id": cue["id"], "en": cue["en"]} for cue in cues[context_start:context_end]]
+    targets = [{"id": cue["id"], "en": cue["en"]} for cue in cues[start:end]]
+    char_count = sum(len(item["en"]) for item in context)
+    max_tokens = min(8000, max(1800, int(char_count * 1.4) + 1200))
+    payload = {
+        "model": model,
+        "temperature": 0.2,
+        "max_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Return only JSON: {\"translations\":[{\"id\":number,\"zh\":\"...\"}]}. "
+                    "Translate the target English subtitle cues into natural Simplified Chinese. "
+                    "Use surrounding context to keep names, terms, pronouns, style, and repeated concepts consistent. "
+                    "Return translations only for target ids. Preserve item count and ids. "
+                    "Do not translate ASMR sound words too literally; keep them natural and concise."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps({
+                    "target_ids": target_ids,
+                    "context": context,
+                    "targets": targets,
+                }, ensure_ascii=False),
+            },
+        ],
+    }
+    expected = set(target_ids)
+    last_error = None
+    for attempt in range(2):
+        try:
+            response = call_llm(payload)
+            translations = response.get("translations")
+            if not isinstance(translations, list):
+                raise ValueError("missing translations")
+            by_id = {}
+            for item in translations:
+                if not isinstance(item, dict):
+                    raise ValueError("translation item is not an object")
+                cue_id = item.get("id")
+                zh = re.sub(r"\s+", " ", str(item.get("zh", ""))).strip()
+                if cue_id in by_id or cue_id not in expected or not zh:
+                    raise ValueError("translation id mismatch")
+                by_id[cue_id] = zh
+            if set(by_id) != expected:
+                raise ValueError("translation ids incomplete")
+            return by_id, 0
+        except Exception as error:
+            last_error = error
+            if attempt == 0:
+                continue
+
+    if end - start > 1:
+        mid = start + (end - start) // 2
+        print(
+            f"WARN bilingual translation batch split: ids {target_ids[0]}-{target_ids[-1]} failed: {last_error}",
+            file=sys.stderr,
+        )
+        left, left_failures = translate_batch_range(cues, start, mid)
+        right, right_failures = translate_batch_range(cues, mid, end)
+        merged = {}
+        merged.update(left)
+        merged.update(right)
+        return merged, left_failures + right_failures
+
+    print(f"WARN bilingual translation cue fallback: id {target_ids[0]} failed: {last_error}", file=sys.stderr)
+    return {}, 1
+
+with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+    cues = parse_blocks(f.read())
+
+if not cues:
+    raise SystemExit(0)
+
+for start in range(0, len(cues), batch_size):
+    end = min(len(cues), start + batch_size)
+    translations = translate_batch(cues, start, end)
+    for cue in cues[start:end]:
+        cue["zh"] = translations.get(cue["id"], "")
+
+directory = os.path.dirname(path) or "."
+fd, tmp = tempfile.mkstemp(prefix=".sr-bilingual-", suffix=".srt", dir=directory)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        for index, cue in enumerate(cues, 1):
+            lines = list(cue["en_lines"])
+            zh_lines = wrap_zh(cue["zh"])
+            if zh_lines:
+                lines.extend(zh_lines)
+            f.write(f"{index}\n")
+            f.write(cue["time"])
+            f.write("\n")
+            f.write("\n".join(lines))
+            f.write("\n\n")
+    os.replace(tmp, path)
+except Exception:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
+PY
+}
+
 file_extension() {
     printf "%s" "${1##*.}" | /usr/bin/tr "[:upper:]" "[:lower:]"
 }
@@ -1323,7 +1606,14 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
             else
                 echo "WARN normalize failed, keeping original: $srt"
             fi
-            notify_file_progress "$src" "$i" "封装字幕" 95 "即将完成"
+            notify_file_progress "$src" "$i" "翻译字幕" 93 "正在整理"
+            write_job_state "translate-subtitles"
+            if translate_srt_to_bilingual "$srt"; then
+                echo "BILINGUAL TRANSLATED: $srt"
+            else
+                echo "WARN bilingual translation failed, keeping English subtitles: $srt"
+            fi
+            notify_file_progress "$src" "$i" "封装字幕" 96 "即将完成"
             if embed_subtitles "$src" "$srt"; then
                 ok=$((ok+1))
                 completed_files+=("${src:t}")
