@@ -562,7 +562,7 @@ private struct MenuActionIcon: View {
 
     private var symbolName: String {
         switch actionID {
-        case "subtitles":
+        case "subtitles", "remove-subtitles":
             return "captions.bubble"
         case "new-text":
             return "doc.text"

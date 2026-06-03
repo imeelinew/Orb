@@ -9,6 +9,7 @@ struct MenuAction: Identifiable, Hashable {
 
     static let all: [MenuAction] = [
         MenuAction(id: "subtitles", title: "生成字幕", filename: "gen_subtitles.sh", symbolName: "captions.bubble", allowsEmpty: false),
+        MenuAction(id: "remove-subtitles", title: "移除字幕", filename: "remove_subtitles.sh", symbolName: "captions.bubble", allowsEmpty: false),
         MenuAction(id: "new-text", title: "新建文本文件", filename: "new_txt.sh", symbolName: "doc.text", allowsEmpty: false),
         MenuAction(id: "new-markdown", title: "新建 Markdown 文件", filename: "new_md.sh", symbolName: "doc.badge.plus", allowsEmpty: false),
         MenuAction(id: "new-word", title: "新建 Word 文档", filename: "new_docx.sh", symbolName: "doc.richtext", allowsEmpty: false),
@@ -22,6 +23,7 @@ struct MenuAction: Identifiable, Hashable {
 enum MenuActionConfiguration {
     static let isEnabledKey = "contextMenuEnabled"
     static let enabledIDsKey = "enabledMenuActionIDs"
+    private static let didMigrateRemoveSubtitlesDefaultKey = "didMigrateRemoveSubtitlesDefaultMenuAction"
     static let filename = "menu-actions.json"
     static let extensionBundleIdentifier = "com.eli.Orb.FinderSync"
 
@@ -48,8 +50,13 @@ enum MenuActionConfiguration {
         guard UserDefaults.standard.object(forKey: enabledIDsKey) != nil else {
             return defaultEnabledIDs
         }
-        let stored = UserDefaults.standard.stringArray(forKey: enabledIDsKey) ?? []
-        return Set(stored)
+        var ids = Set(UserDefaults.standard.stringArray(forKey: enabledIDsKey) ?? [])
+        if !UserDefaults.standard.bool(forKey: didMigrateRemoveSubtitlesDefaultKey) {
+            ids.insert("remove-subtitles")
+            UserDefaults.standard.set(Array(ids).sorted(), forKey: enabledIDsKey)
+            UserDefaults.standard.set(true, forKey: didMigrateRemoveSubtitlesDefaultKey)
+        }
+        return ids
     }
 
     static func setEnabledIDs(_ ids: Set<String>) {

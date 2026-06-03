@@ -14,6 +14,7 @@ final class FinderSyncExt: FIFinderSync {
 
     private let services: [Service] = [
         Service(id: "subtitles", title: "生成字幕", filename: "gen_subtitles.sh", symbol: "captions.bubble", assetName: nil, allowsEmpty: false),
+        Service(id: "remove-subtitles", title: "移除字幕", filename: "remove_subtitles.sh", symbol: "captions.bubble", assetName: nil, allowsEmpty: false),
         Service(id: "new-text", title: "新建文本文件", filename: "new_txt.sh", symbol: "doc.text", assetName: nil, allowsEmpty: false),
         Service(id: "new-markdown", title: "新建 Markdown 文件", filename: "new_md.sh", symbol: "chevron.left.forwardslash.chevron.right", assetName: "logo-markdown", allowsEmpty: false),
         Service(id: "new-word", title: "新建 Word 文档", filename: "new_docx.sh", symbol: "doc.richtext", assetName: nil, allowsEmpty: false),
@@ -59,7 +60,7 @@ final class FinderSyncExt: FIFinderSync {
         }
 
         let parent = NSMenuItem(title: "Orb", action: nil, keyEquivalent: "")
-        if let image = cachedSymbol("circle.fill", color: tint, isDark: isDark) {
+        if let image = cachedSymbol("circle.fill", color: tint, isDark: isDark, glyphSize: 10) {
             parent.image = image
         }
         parent.submenu = submenu
@@ -96,12 +97,12 @@ final class FinderSyncExt: FIFinderSync {
         return image
     }
 
-    private func cachedSymbol(_ name: String, color: NSColor, isDark: Bool) -> NSImage? {
-        let cacheKey = "\(isDark ? "dark" : "light"):\(name)"
+    private func cachedSymbol(_ name: String, color: NSColor, isDark: Bool, glyphSize: CGFloat = 16) -> NSImage? {
+        let cacheKey = "\(isDark ? "dark" : "light"):\(name):\(glyphSize)"
         if let cached = iconCache[cacheKey] {
             return cached
         }
-        guard let image = tintedSymbol(name, color: color) else {
+        guard let image = tintedSymbol(name, color: color, glyphSize: glyphSize) else {
             return nil
         }
         iconCache[cacheKey] = image
@@ -129,15 +130,17 @@ final class FinderSyncExt: FIFinderSync {
         }
     }
 
-    private func tintedSymbol(_ name: String, color: NSColor) -> NSImage? {
+    private func tintedSymbol(_ name: String, color: NSColor, glyphSize: CGFloat = 16) -> NSImage? {
         guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
             return nil
         }
-        let size = NSSize(width: 16, height: 16)
-        return NSImage(size: size, flipped: false) { rect in
-            symbol.draw(in: rect)
+        let imageSize = NSSize(width: 16, height: 16)
+        return NSImage(size: imageSize, flipped: false) { rect in
+            let inset = max((rect.width - glyphSize) / 2, 0)
+            let glyphRect = rect.insetBy(dx: inset, dy: inset)
+            symbol.draw(in: glyphRect)
             color.set()
-            rect.fill(using: .sourceAtop)
+            glyphRect.fill(using: .sourceAtop)
             return true
         }
     }

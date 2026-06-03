@@ -289,6 +289,90 @@ except Exception:
 PY
 }
 
+file_extension() {
+    printf "%s" "${1##*.}" | /usr/bin/tr "[:upper:]" "[:lower:]"
+}
+
+subtitle_codec_for() {
+    local src="$1"
+    case "$(file_extension "$src")" in
+        mp4|m4v|mov)
+            printf "mov_text"
+            ;;
+        mkv)
+            printf "copy"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+subtitle_stream_count() {
+    local src="$1"
+    if ! command -v ffprobe >/dev/null 2>&1; then
+        printf "0"
+        return
+    fi
+    ffprobe -v error -select_streams s -show_entries stream=index -of csv=p=0 "$src" 2>/dev/null \
+        | /usr/bin/wc -l \
+        | /usr/bin/tr -d " "
+}
+
+has_orb_subtitles() {
+    local src="$1"
+    command -v ffprobe >/dev/null 2>&1 || return 1
+    ffprobe -v error -select_streams s -show_entries stream_tags -of default=nw=1:nk=1 "$src" 2>/dev/null \
+        | /usr/bin/grep -Fqi "Orb Subtitles"
+}
+
+embed_subtitles() {
+    local src="$1"
+    local srt="$2"
+    local codec existing_subtitle_count subtitle_index dir filename stem ext tmp_video
+
+    codec="$(subtitle_codec_for "$src")" || return 2
+    existing_subtitle_count="$(subtitle_stream_count "$src")"
+    [ -z "$existing_subtitle_count" ] && existing_subtitle_count=0
+    subtitle_index="$existing_subtitle_count"
+
+    dir="${src:h}"
+    filename="${src:t}"
+    stem="${filename%.*}"
+    ext="${filename##*.}"
+    tmp_video="$dir/.${stem}.orb-subtitled.$$.$ext"
+
+    echo "--- embed subtitles: $src"
+    if [ "$codec" = "mov_text" ]; then
+        ffmpeg -y -loglevel error \
+            -i "$src" -i "$srt" \
+            -map 0 -map 1 \
+            -map_metadata 0 -map_chapters 0 \
+            -c copy -c:s mov_text \
+            "-metadata:s:s:${subtitle_index}" "title=Orb Subtitles" \
+            "-metadata:s:s:${subtitle_index}" "handler_name=Orb Subtitles" \
+            "-disposition:s:${subtitle_index}" default \
+            "$tmp_video"
+    else
+        ffmpeg -y -loglevel error \
+            -i "$src" -i "$srt" \
+            -map 0 -map 1 \
+            -map_metadata 0 -map_chapters 0 \
+            -c copy -c:s copy \
+            "-metadata:s:s:${subtitle_index}" "title=Orb Subtitles" \
+            "-metadata:s:s:${subtitle_index}" "handler_name=Orb Subtitles" \
+            "-disposition:s:${subtitle_index}" default \
+            "$tmp_video"
+    fi
+
+    if [ "$?" -ne 0 ]; then
+        /bin/rm -f "$tmp_video"
+        return 1
+    fi
+
+    /bin/mv -f "$tmp_video" "$src"
+}
+
 if ! command -v whisper-cli >/dev/null 2>&1; then
     notify "error" "缺少依赖" "未找到 whisper-cli，请先 brew install whisper-cpp"
     exit 1
@@ -319,8 +403,13 @@ for src in "$@"; do
         pre_skipped=$((pre_skipped+1))
         continue
     fi
-    if [ -e "${src%.*}.srt" ]; then
-        echo "SKIP exists: ${src%.*}.srt"
+    if ! subtitle_codec_for "$src" >/dev/null; then
+        echo "SKIP unsupported container: $src"
+        pre_skipped=$((pre_skipped+1))
+        continue
+    fi
+    if has_orb_subtitles "$src"; then
+        echo "SKIP embedded Orb subtitles exist: $src"
         pre_skipped=$((pre_skipped+1))
         continue
     fi
@@ -363,7 +452,6 @@ typeset -a completed_files
 for (( i = 1; i <= ${#todo[@]}; i++ )); do
     src="${todo[$i]}"
     stem="${src%.*}"
-    srt="$stem.srt"
     file_work="${todo_work[$i]}"
 
     tmp_base=$(/usr/bin/mktemp -t sr-whisper) || {
@@ -372,6 +460,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         continue
     }
     tmp_wav="${tmp_base}.wav"
+    srt="${tmp_base}.srt"
 
     notify_file_progress "$src" "$i" "抽取音频" 5
     echo "--- ffmpeg: $src"
@@ -382,7 +471,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         whisper_est=$((file_work / 13 + 2))
         [ "$whisper_est" -lt 6 ] && whisper_est=6
 
-        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$stem" &
+        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$tmp_base" &
         whisper_pid=$!
         while kill -0 "$whisper_pid" 2>/dev/null; do
             /bin/sleep 2
@@ -402,11 +491,22 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
             else
                 echo "WARN normalize failed, keeping original: $srt"
             fi
-            ok=$((ok+1))
-            completed_files+=("${src:t}")
-            echo "OK: $srt"
-            notify_file_progress "$src" "$i" "刷新 Finder" 97
-            /usr/bin/osascript -e "tell application \"Finder\" to update (POSIX file \"${src:h}\" as alias)" 2>/dev/null
+            notify_file_progress "$src" "$i" "封装字幕" 95
+            if embed_subtitles "$src" "$srt"; then
+                ok=$((ok+1))
+                completed_files+=("${src:t}")
+                echo "OK embedded subtitles: $src"
+                notify_file_progress "$src" "$i" "刷新 Finder" 98
+                /usr/bin/osascript -e "tell application \"Finder\" to update (POSIX file \"${src:h}\" as alias)" 2>/dev/null
+            else
+                fail=$((fail+1))
+                fallback_srt="$stem.srt"
+                if /bin/cp -f "$srt" "$fallback_srt"; then
+                    echo "FAIL embed subtitles, kept fallback: $fallback_srt"
+                else
+                    echo "FAIL embed subtitles: $src"
+                fi
+            fi
         else
             fail=$((fail+1))
             echo "FAIL whisper: $src"
@@ -416,7 +516,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         echo "FAIL ffmpeg: $src"
     fi
 
-    /bin/rm -f "$tmp_base" "$tmp_wav"
+    /bin/rm -f "$tmp_base" "$tmp_wav" "$srt"
     processed_work_units=$((processed_work_units + file_work))
 done
 

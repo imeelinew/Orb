@@ -49,7 +49,7 @@ struct MenuBarNotificationView: View {
 
     private var iconName: String {
         switch actionID {
-        case "subtitles":
+        case "subtitles", "remove-subtitles":
             return "captions.bubble"
         case "new-text":
             return "doc.text"

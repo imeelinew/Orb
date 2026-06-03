@@ -48,17 +48,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var networkSpeedContentView: NSStackView?
     private var networkSpeedLabel: NSTextField?
     private var networkSpeedImageView: NSImageView?
-    private var subtitleProgressRingView: SubtitleProgressRingView?
-    private var subtitleProgressPopoverAnchorView: NSView?
     private var subtitleMenuBarProgress: SubtitleMenuBarProgress?
     private var shouldClearSubtitleProgressWhenPopoverCloses = false
     private var pendingSubtitlePopoverWorkItem: DispatchWorkItem?
+    private var pendingStatusItemSingleClickWorkItem: DispatchWorkItem?
     private let statusButtonIconSize: CGFloat = 18
-    private let subtitleProgressRingSize: CGFloat = 18
+    private let statusIconImageSize: CGFloat = 15
     private let statusButtonLabelSpacing: CGFloat = 7
-    private let statusButtonIconSpacing: CGFloat = 14
     private let statusButtonHorizontalPadding: CGFloat = 2
-    private let subtitlePopoverLayoutDelay: TimeInterval = 0.3
+    private let statusItemSingleClickDelay: TimeInterval = NSEvent.doubleClickInterval
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -187,10 +185,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         let title = isShowingNetworkSpeed ? networkSpeedTitle(for: currentNetworkSpeedSample) : nil
-        if title == nil, subtitleMenuBarProgress == nil {
+        if title == nil {
             removeNetworkSpeedButtonContent()
             button.image = statusIcon()
-            button.image?.isTemplate = true
             button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString(string: "")
             statusItem.length = NSStatusItem.variableLength
@@ -204,7 +201,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func statusIcon() -> NSImage? {
-        NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Orb")
+        if let state = subtitleMenuBarProgress {
+            if state.isComplete {
+                return subtitleCompletionStatusIcon(for: state)
+            }
+            return subtitleProgressStatusIcon(fraction: state.fraction)
+        }
+
+        let image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Orb")
+        image?.isTemplate = true
+        return image
+    }
+
+    private func subtitleCompletionStatusIcon(for state: SubtitleMenuBarProgress) -> NSImage? {
+        let symbolName = state.completionKind == .error ? "xmark.circle.fill" : "checkmark.circle.fill"
+        let description = state.completionKind == .error ? "字幕失败" : "字幕完成"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: description)
+        image?.isTemplate = true
+        return image
+    }
+
+    private func subtitleProgressStatusIcon(fraction: Double) -> NSImage {
+        let size = NSSize(width: statusIconImageSize, height: statusIconImageSize)
+        let image = NSImage(size: size)
+        image.lockFocus()
+
+        let bounds = NSRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        let radius = min(bounds.width, bounds.height) / 2
+        let lineWidth: CGFloat = 2.2
+
+        let trackPath = NSBezierPath()
+        trackPath.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+        trackPath.lineWidth = lineWidth
+        NSColor.black.withAlphaComponent(0.26).setStroke()
+        trackPath.stroke()
+
+        let progressPath = NSBezierPath()
+        progressPath.appendArc(
+            withCenter: center,
+            radius: radius,
+            startAngle: 90,
+            endAngle: 90 - 360 * min(max(fraction, 0.01), 1),
+            clockwise: true
+        )
+        progressPath.lineWidth = lineWidth
+        progressPath.lineCapStyle = .round
+        NSColor.black.setStroke()
+        progressPath.stroke()
+
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
     }
 
     private func networkSpeedTitle(for sample: NetworkSpeedSample) -> NSAttributedString {
@@ -231,18 +279,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let contentView: NSStackView
         let label: NSTextField
         let imageView: NSImageView
-        let ringView: SubtitleProgressRingView
-        let anchorView: NSView
         if let existingContentView = networkSpeedContentView,
            let existingLabel = networkSpeedLabel,
-           let existingImageView = networkSpeedImageView,
-           let existingRingView = subtitleProgressRingView,
-           let existingAnchorView = subtitleProgressPopoverAnchorView {
+           let existingImageView = networkSpeedImageView {
             contentView = existingContentView
             label = existingLabel
             imageView = existingImageView
-            ringView = existingRingView
-            anchorView = existingAnchorView
         } else {
             label = NSTextField(labelWithString: "")
             label.alignment = .center
@@ -258,44 +300,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             imageView.setContentCompressionResistancePriority(.required, for: .horizontal)
             imageView.translatesAutoresizingMaskIntoConstraints = false
 
-            ringView = SubtitleProgressRingView()
-            ringView.translatesAutoresizingMaskIntoConstraints = false
-            ringView.setContentHuggingPriority(.required, for: .horizontal)
-            ringView.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-            anchorView = PopoverAnchorView()
-            anchorView.translatesAutoresizingMaskIntoConstraints = false
-
-            contentView = NSStackView(views: [label, imageView, ringView])
+            contentView = NSStackView(views: [label, imageView])
             contentView.orientation = .horizontal
             contentView.alignment = .centerY
-            contentView.spacing = statusButtonIconSpacing
+            contentView.spacing = statusButtonLabelSpacing
             contentView.detachesHiddenViews = true
             contentView.translatesAutoresizingMaskIntoConstraints = false
             button.addSubview(contentView)
-            button.addSubview(anchorView)
             NSLayoutConstraint.activate([
                 contentView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
                 contentView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
                 imageView.widthAnchor.constraint(equalToConstant: statusButtonIconSize),
-                imageView.heightAnchor.constraint(equalToConstant: statusButtonIconSize),
-                ringView.widthAnchor.constraint(equalToConstant: subtitleProgressRingSize),
-                ringView.heightAnchor.constraint(equalToConstant: subtitleProgressRingSize),
-                anchorView.centerXAnchor.constraint(equalTo: ringView.centerXAnchor),
-                anchorView.centerYAnchor.constraint(equalTo: ringView.centerYAnchor),
-                anchorView.widthAnchor.constraint(equalToConstant: 2),
-                anchorView.heightAnchor.constraint(equalToConstant: subtitleProgressRingSize)
+                imageView.heightAnchor.constraint(equalToConstant: statusButtonIconSize)
             ])
 
             networkSpeedContentView = contentView
             networkSpeedLabel = label
             networkSpeedImageView = imageView
-            subtitleProgressRingView = ringView
-            subtitleProgressPopoverAnchorView = anchorView
         }
 
         contentView.setCustomSpacing(statusButtonLabelSpacing, after: label)
-        contentView.setCustomSpacing(statusButtonIconSpacing, after: imageView)
         if let title {
             label.attributedStringValue = title
             label.isHidden = false
@@ -305,10 +329,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         label.invalidateIntrinsicContentSize()
         imageView.image = statusIcon()
-        imageView.image?.isTemplate = true
-        ringView.progress = subtitleMenuBarProgress?.fraction ?? 0
-        ringView.isComplete = subtitleMenuBarProgress?.isComplete == true
-        ringView.isHidden = subtitleMenuBarProgress == nil
         contentView.isHidden = false
     }
 
@@ -317,14 +337,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         networkSpeedContentView = nil
         networkSpeedLabel = nil
         networkSpeedImageView = nil
-        subtitleProgressRingView = nil
-        subtitleProgressPopoverAnchorView = nil
     }
 
     private func statusButtonWidth(for title: NSAttributedString?) -> CGFloat {
         let labelWidth = title.map { ceil($0.size().width) + statusButtonLabelSpacing } ?? 0
-        let ringWidth = subtitleMenuBarProgress == nil ? 0 : statusButtonIconSpacing + subtitleProgressRingSize
-        return labelWidth + statusButtonIconSize + ringWidth + statusButtonHorizontalPadding * 2
+        return labelWidth + statusButtonIconSize + statusButtonHorizontalPadding * 2
     }
 
     private func formatNetworkSpeed(_ bytesPerSecond: UInt64) -> String {
@@ -359,15 +376,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func handleStatusItemClick(_ sender: Any?) {
         guard let button = statusItem.button else { return }
-        let event = NSApp.currentEvent
-        if let ringView = subtitleProgressRingView,
-           !ringView.isHidden,
-           let event,
-           ringView.bounds.contains(ringView.convert(event.locationInWindow, from: nil)) {
-            showSubtitleMenuBarPopover(userInitiated: true)
+        guard let event = NSApp.currentEvent else {
             return
         }
 
+        switch event.type {
+        case .rightMouseUp:
+            cancelPendingStatusItemSingleClick()
+            popUpStatusItemMenu(in: button)
+        case .leftMouseUp where event.clickCount >= 2:
+            cancelPendingStatusItemSingleClick()
+            popUpStatusItemMenu(in: button)
+        case .leftMouseUp:
+            scheduleStatusItemSingleClick()
+        default:
+            return
+        }
+    }
+
+    private func scheduleStatusItemSingleClick() {
+        cancelPendingStatusItemSingleClick()
+        guard subtitleMenuBarProgress != nil else { return }
+        var work: DispatchWorkItem?
+        work = DispatchWorkItem { [weak self] in
+            guard let self,
+                  let currentWork = work,
+                  !currentWork.isCancelled,
+                  pendingStatusItemSingleClickWorkItem === currentWork else {
+                return
+            }
+            pendingStatusItemSingleClickWorkItem = nil
+            handleStatusItemSingleClickAfterDelay()
+        }
+        guard let work else { return }
+        pendingStatusItemSingleClickWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + statusItemSingleClickDelay, execute: work)
+    }
+
+    private func cancelPendingStatusItemSingleClick() {
+        pendingStatusItemSingleClickWorkItem?.cancel()
+        pendingStatusItemSingleClickWorkItem = nil
+    }
+
+    private func handleStatusItemSingleClickAfterDelay() {
+        guard let state = subtitleMenuBarProgress else { return }
+        if state.isComplete {
+            clearSubtitleCompletionFromStatusItemClick()
+            return
+        }
+        showSubtitleMenuBarPopover(userInitiated: true)
+    }
+
+    private func clearSubtitleCompletionFromStatusItemClick() {
+        if notificationPopoverMode == .subtitleCompletion {
+            shouldClearSubtitleProgressWhenPopoverCloses = false
+            closeNotificationPopoverProgrammatically()
+        }
+        clearSubtitleMenuBarProgress()
+    }
+
+    private func popUpStatusItemMenu(in button: NSStatusBarButton) {
         makeMenu().popUp(
             positioning: nil,
             at: NSPoint(x: button.bounds.minX, y: button.bounds.minY),
@@ -636,7 +704,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 completionKind: kind
             )
             refreshStatusItemButton()
-            showSubtitleCompletionPopover(clearAfterClose: false)
+            showSubtitleCompletionPopover(clearAfterClose: true)
             return
         }
         showMenuBarPopover(title: title, subtitle: subtitle, actionID: actionID, kind: kind)
@@ -651,12 +719,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func showSubtitleMenuBarPopoverAfterStatusLayout(userInitiated: Bool) {
         pendingSubtitlePopoverWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.pendingSubtitlePopoverWorkItem = nil
-            self?.showSubtitleMenuBarPopover(userInitiated: userInitiated)
+        var work: DispatchWorkItem?
+        work = DispatchWorkItem { [weak self] in
+            guard let self,
+                  let currentWork = work,
+                  !currentWork.isCancelled,
+                  pendingSubtitlePopoverWorkItem === currentWork else {
+                return
+            }
+            pendingSubtitlePopoverWorkItem = nil
+            showSubtitleMenuBarPopover(userInitiated: userInitiated)
         }
+        guard let work else { return }
         pendingSubtitlePopoverWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + subtitlePopoverLayoutDelay, execute: work)
+        DispatchQueue.main.async(execute: work)
     }
 
     private func showSubtitleMenuBarPopover(userInitiated: Bool) {
@@ -677,7 +753,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             kind: .success,
             progress: progress,
             mode: .subtitleProgress,
-            anchorView: subtitleProgressAnchorView(),
             autoDismiss: !userInitiated
         )
     }
@@ -699,23 +774,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             actionID: "subtitles",
             kind: state.completionKind,
             mode: .subtitleCompletion,
-            anchorView: subtitleProgressAnchorView(),
             autoDismiss: true
         )
         shouldClearSubtitleProgressWhenPopoverCloses = clearAfterClose
-    }
-
-    private func subtitleProgressAnchorView() -> NSView? {
-        guard let button = statusItem.button,
-              let ringView = subtitleProgressRingView,
-              let anchorView = subtitleProgressPopoverAnchorView,
-              !ringView.isHidden,
-              ringView.window === button.window,
-              anchorView.window === button.window else {
-            return nil
-        }
-        button.layoutSubtreeIfNeeded()
-        return anchorView
     }
 
     private func showMenuBarPopover(
@@ -725,7 +786,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         kind: MenuBarNotificationView.Kind,
         progress: MenuBarNotificationView.ProgressState? = nil,
         mode: MenuBarPopoverMode = .notification,
-        anchorView: NSView? = nil,
         autoDismiss: Bool? = nil
     ) {
         guard let button = statusItem.button else { return }
@@ -772,11 +832,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         notificationPopover = popover
         notificationPopoverMode = mode
 
-        if let anchorView {
-            popover.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: .minY)
-        } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
 
         let shouldAutoDismiss = autoDismiss ?? (progress == nil)
         guard shouldAutoDismiss else { return }
@@ -825,6 +881,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func clearSubtitleMenuBarProgress() {
         pendingSubtitlePopoverWorkItem?.cancel()
         pendingSubtitlePopoverWorkItem = nil
+        cancelPendingStatusItemSingleClick()
         subtitleMenuBarProgress = nil
         shouldClearSubtitleProgressWhenPopoverCloses = false
         refreshStatusItemButton()
@@ -909,73 +966,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func quit() {
         disableFinderExtensionForTermination()
         NSApp.terminate(nil)
-    }
-}
-
-private final class SubtitleProgressRingView: NSView {
-    var progress: Double = 0 {
-        didSet {
-            progress = min(max(progress, 0), 1)
-            needsDisplay = true
-        }
-    }
-
-    var isComplete = false {
-        didSet {
-            needsDisplay = true
-        }
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: 18, height: 18)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        if isComplete {
-            let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-                .applying(.init(paletteColors: [.black, .white]))
-            let symbol = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Complete")?
-                .withSymbolConfiguration(symbolConfiguration)
-            symbol?.draw(in: bounds)
-            return
-        }
-
-        let ringBounds = bounds.insetBy(dx: 2.5, dy: 2.5)
-        let center = NSPoint(x: ringBounds.midX, y: ringBounds.midY)
-        let radius = min(ringBounds.width, ringBounds.height) / 2
-        let lineWidth: CGFloat = 3
-
-        let trackPath = NSBezierPath()
-        trackPath.appendArc(
-            withCenter: center,
-            radius: radius,
-            startAngle: 0,
-            endAngle: 360
-        )
-        trackPath.lineWidth = lineWidth
-        NSColor.white.withAlphaComponent(0.28).setStroke()
-        trackPath.stroke()
-
-        let fraction = min(max(progress, 0.01), 1)
-        let progressPath = NSBezierPath()
-        progressPath.appendArc(
-            withCenter: center,
-            radius: radius,
-            startAngle: 90,
-            endAngle: 90 - 360 * fraction,
-            clockwise: true
-        )
-        progressPath.lineWidth = lineWidth
-        progressPath.lineCapStyle = .round
-        NSColor.white.setStroke()
-        progressPath.stroke()
-    }
-}
-
-private final class PopoverAnchorView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
     }
 }
