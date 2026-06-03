@@ -17,7 +17,11 @@ current_state_file=""
 tmp_base=""
 tmp_wav=""
 srt=""
+whisper_log=""
 child_pid=""
+POSTPROCESS_ESTIMATE_SECONDS=8
+ETA_ESTIMATING_TEXT="正在估算"
+displayed_eta=""
 
 notify() {
     local kind="$1"
@@ -46,20 +50,20 @@ write_job_state() {
     local active_child_pid="${2:-}"
     [ -n "$current_src" ] || return 0
     current_state_file="$(job_state_file "$current_src")"
-    /usr/bin/python3 - "$current_state_file" "$current_src" "$$" "$stage" "$active_child_pid" "$tmp_base" "$tmp_wav" "$srt" <<'PY'
+    /usr/bin/python3 - "$current_state_file" "$current_src" "$$" "$stage" "$active_child_pid" "$tmp_base" "$tmp_wav" "$srt" "$whisper_log" <<'PY'
 import json
 import os
 import sys
 import time
 
-state_file, path, script_pid, stage, child_pid, tmp_base, tmp_wav, srt = sys.argv[1:9]
+state_file, path, script_pid, stage, child_pid, tmp_base, tmp_wav, srt, whisper_log = sys.argv[1:10]
 payload = {
     "path": path,
     "scriptPID": int(script_pid),
     "childPID": int(child_pid) if child_pid else None,
     "stage": stage,
     "updatedAt": time.time(),
-    "temporaryFiles": [value for value in (tmp_base, tmp_wav, srt) if value],
+    "temporaryFiles": [value for value in (tmp_base, tmp_wav, srt, whisper_log) if value],
 }
 tmp = state_file + ".tmp"
 with open(tmp, "w", encoding="utf-8") as f:
@@ -75,8 +79,8 @@ cleanup_current_job() {
         wait "$child_pid" 2>/dev/null || true
         child_pid=""
     fi
-    if [ -n "$tmp_base" ] || [ -n "$tmp_wav" ] || [ -n "$srt" ]; then
-        /bin/rm -f "$tmp_base" "$tmp_wav" "$srt"
+    if [ -n "$tmp_base" ] || [ -n "$tmp_wav" ] || [ -n "$srt" ] || [ -n "$whisper_log" ]; then
+        /bin/rm -f "$tmp_base" "$tmp_wav" "$srt" "$whisper_log"
     fi
     if [ -n "$current_src" ]; then
         dir="${current_src:h}"
@@ -101,20 +105,10 @@ trap handle_stop_signal TERM INT
 
 progress_remaining_text() {
     local percent="$1"
-    local now elapsed remaining
-    now=$(/bin/date +%s)
-    elapsed=$((now - start_ts))
-
-    if [ "$percent" -gt 2 ]; then
-        remaining=$((elapsed * (100 - percent) / percent))
-    else
-        remaining=$eta
-    fi
-
-    if [ "$remaining" -le 1 ]; then
+    if [ "$percent" -ge 92 ]; then
         printf "即将完成"
     else
-        printf "约 %s" "$(fmt_time "$remaining")"
+        printf "%s" "$ETA_ESTIMATING_TEXT"
     fi
 }
 
@@ -122,10 +116,15 @@ notify_progress() {
     local title="$1"
     local subtitle="$2"
     local percent="$3"
+    local remaining_override="${4:-}"
     local remaining
     [ "$percent" -lt 1 ] && percent=1
     [ "$percent" -gt 99 ] && percent=99
-    remaining="$(progress_remaining_text "$percent")"
+    if [ -n "$remaining_override" ]; then
+        remaining="$remaining_override"
+    else
+        remaining="$(progress_remaining_text "$percent")"
+    fi
     echo "PROGRESS: 生成字幕: $percent% | $title${subtitle:+ | $subtitle} | $remaining"
     emit_popover_progress "subtitles" "$title" "$subtitle" "$percent" "$remaining"
 }
@@ -135,13 +134,14 @@ notify_file_progress() {
     local index="$2"
     local stage="$3"
     local file_percent="$4"
+    local remaining_override="${5:-}"
     local file_work="${todo_work[$index]}"
     local completed_scaled percent subtitle
 
     completed_scaled=$(((processed_work_units + file_work * file_percent / 100) * 100))
     percent=$((completed_scaled / total_work_units))
     subtitle="${index}/${#todo[@]} ${stage}: ${src:t}"
-    notify_progress "生成字幕中" "$subtitle" "$percent"
+    notify_progress "生成字幕中" "$subtitle" "$percent" "$remaining_override"
 }
 
 fmt_time() {
@@ -155,6 +155,122 @@ fmt_time() {
     else
         printf "%ds" "$s"
     fi
+}
+
+estimated_file_seconds() {
+    local duration="$1"
+    local estimate
+    [ "$duration" -le 0 ] && duration=60
+    estimate=$((duration / 13 + POSTPROCESS_ESTIMATE_SECONDS + 2))
+    [ "$estimate" -lt 10 ] && estimate=10
+    printf "%d" "$estimate"
+}
+
+remaining_queued_seconds() {
+    local index="$1"
+    local total=0
+    local j
+    for (( j = index + 1; j <= ${#todo_work[@]}; j++ )); do
+        total=$((total + $(estimated_file_seconds "${todo_work[$j]}")))
+    done
+    printf "%d" "$total"
+}
+
+eta_warmup_seconds() {
+    local duration="$1"
+    local seconds
+    [ "$duration" -le 0 ] && duration=60
+    seconds=$((duration * 8 / 1000))
+    [ "$seconds" -lt 8 ] && seconds=8
+    [ "$seconds" -gt 20 ] && seconds=20
+    printf "%d" "$seconds"
+}
+
+eta_audio_sample_seconds() {
+    local duration="$1"
+    local seconds
+    [ "$duration" -le 0 ] && duration=60
+    seconds=$((duration * 15 / 1000))
+    [ "$seconds" -lt 30 ] && seconds=30
+    [ "$seconds" -gt 90 ] && seconds=90
+    printf "%d" "$seconds"
+}
+
+parse_whisper_processed_seconds() {
+    local log_path="$1"
+    [ -s "$log_path" ] || {
+        printf "0"
+        return 0
+    }
+
+    /usr/bin/python3 - "$log_path" <<'PY'
+import re
+import sys
+
+pattern = re.compile(
+    r"\[(\d+):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*"
+    r"(\d+):(\d{2}):(\d{2})\.(\d{3})\]"
+)
+latest = 0.0
+with open(sys.argv[1], "r", encoding="utf-8", errors="ignore") as f:
+    for line in f:
+        match = pattern.search(line)
+        if not match:
+            continue
+        h, m, s, ms = map(int, match.groups()[4:8])
+        latest = h * 3600 + m * 60 + s + ms / 1000
+print(int(latest))
+PY
+}
+
+smooth_eta_text() {
+    local raw_eta="$1"
+    local smoothed max_down
+    [ "$raw_eta" -lt 1 ] && raw_eta=1
+
+    if [ -z "$displayed_eta" ]; then
+        displayed_eta="$raw_eta"
+    else
+        smoothed=$(((displayed_eta * 7 + raw_eta * 3) / 10))
+        max_down=$((displayed_eta / 5))
+        [ "$max_down" -lt 20 ] && max_down=20
+        if [ "$smoothed" -lt $((displayed_eta - max_down)) ]; then
+            smoothed=$((displayed_eta - max_down))
+        fi
+        [ "$smoothed" -lt 1 ] && smoothed=1
+        displayed_eta="$smoothed"
+    fi
+
+    printf "约 %s" "$(fmt_time "$displayed_eta")"
+}
+
+whisper_eta_text() {
+    local log_path="$1"
+    local duration="$2"
+    local elapsed="$3"
+    local index="$4"
+    local processed warmup audio_sample speed_times_100 current_remaining queue_remaining total_remaining
+
+    processed="$(parse_whisper_processed_seconds "$log_path")"
+    warmup="$(eta_warmup_seconds "$duration")"
+    audio_sample="$(eta_audio_sample_seconds "$duration")"
+
+    if [ "$elapsed" -lt "$warmup" ] || [ "$processed" -lt "$audio_sample" ]; then
+        printf "%s\t%s" "$ETA_ESTIMATING_TEXT" "$processed"
+        return 0
+    fi
+
+    speed_times_100=$((processed * 100 / elapsed))
+    if [ "$speed_times_100" -le 0 ]; then
+        printf "%s\t%s" "$ETA_ESTIMATING_TEXT" "$processed"
+        return 0
+    fi
+
+    current_remaining=$(((duration - processed) * 100 / speed_times_100 + POSTPROCESS_ESTIMATE_SECONDS))
+    [ "$current_remaining" -lt 1 ] && current_remaining=1
+    queue_remaining="$(remaining_queued_seconds "$index")"
+    total_remaining=$((current_remaining + queue_remaining))
+    printf "%s\t%s" "$(smooth_eta_text "$total_remaining")" "$processed"
 }
 
 normalize_srt() {
@@ -516,9 +632,11 @@ if [ "${#todo[@]}" -eq 0 ]; then
     exit 0
 fi
 
-# 实测 whisper-cpp medium 在 Apple Silicon (Metal) 上约 13x 实时，
-# 每个文件再加 2s 的 ffmpeg 抽音 + whisper 启动开销。
-eta=$(( total_work_units / 13 + ${#todo[@]} * 2 ))
+# 实测 whisper-cpp medium 在 Apple Silicon (Metal) 上约 13x 实时。
+eta=0
+for work_units in "${todo_work[@]}"; do
+    eta=$((eta + $(estimated_file_seconds "$work_units")))
+done
 start_ts=$(/bin/date +%s)
 
 if [ "$total_secs" -gt 0 ]; then
@@ -547,8 +665,10 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     }
     tmp_wav="${tmp_base}.wav"
     srt="${tmp_base}.srt"
+    whisper_log="${tmp_base}.whisper.log"
+    displayed_eta=""
 
-    notify_file_progress "$src" "$i" "抽取音频" 5
+    notify_file_progress "$src" "$i" "抽取音频" 5 "$ETA_ESTIMATING_TEXT"
     echo "--- ffmpeg: $src"
     ffmpeg -y -i "$src" -ar 16000 -ac 1 -c:a pcm_s16le "$tmp_wav" -loglevel error &
     child_pid=$!
@@ -557,42 +677,49 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     ffmpeg_status=$?
     child_pid=""
     if [ "$ffmpeg_status" -eq 0 ]; then
-        notify_file_progress "$src" "$i" "识别字幕" 12
+        notify_file_progress "$src" "$i" "识别字幕" 12 "$ETA_ESTIMATING_TEXT"
         echo "--- whisper-cli: $src"
         whisper_start_ts=$(/bin/date +%s)
         whisper_est=$((file_work / 13 + 2))
         [ "$whisper_est" -lt 6 ] && whisper_est=6
 
-        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$tmp_base" &
+        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$tmp_base" > >(/usr/bin/tee -a "$whisper_log") 2>&1 &
         child_pid=$!
         write_job_state "recognize-subtitles" "$child_pid"
         while kill -0 "$child_pid" 2>/dev/null; do
             /bin/sleep 2
             kill -0 "$child_pid" 2>/dev/null || break
             whisper_elapsed=$(( $(/bin/date +%s) - whisper_start_ts ))
-            whisper_percent=$((12 + whisper_elapsed * 76 / whisper_est))
+            eta_result="$(whisper_eta_text "$whisper_log" "$file_work" "$whisper_elapsed" "$i")"
+            IFS=$'\t' read -r remaining_text processed_audio <<< "$eta_result"
+            if [ -n "$processed_audio" ] && [ "$processed_audio" -gt 0 ]; then
+                whisper_percent=$((12 + processed_audio * 76 / file_work))
+            else
+                whisper_percent=$((12 + whisper_elapsed * 76 / whisper_est))
+            fi
             [ "$whisper_percent" -gt 88 ] && whisper_percent=88
+            [ "$whisper_percent" -lt 12 ] && whisper_percent=12
             write_job_state "recognize-subtitles" "$child_pid"
-            notify_file_progress "$src" "$i" "识别字幕" "$whisper_percent"
+            notify_file_progress "$src" "$i" "识别字幕" "$whisper_percent" "$remaining_text"
         done
         wait "$child_pid"
         whisper_status=$?
         child_pid=""
 
         if [ "$whisper_status" -eq 0 ]; then
-            notify_file_progress "$src" "$i" "整理字幕" 92
+            notify_file_progress "$src" "$i" "整理字幕" 92 "即将完成"
             write_job_state "normalize-subtitles"
             if normalize_srt "$srt"; then
                 echo "NORMALIZED: $srt"
             else
                 echo "WARN normalize failed, keeping original: $srt"
             fi
-            notify_file_progress "$src" "$i" "封装字幕" 95
+            notify_file_progress "$src" "$i" "封装字幕" 95 "即将完成"
             if embed_subtitles "$src" "$srt"; then
                 ok=$((ok+1))
                 completed_files+=("${src:t}")
                 echo "OK embedded subtitles: $src"
-                notify_file_progress "$src" "$i" "刷新 Finder" 98
+                notify_file_progress "$src" "$i" "刷新 Finder" 98 "即将完成"
                 /usr/bin/osascript -e "tell application \"Finder\" to update (POSIX file \"${src:h}\" as alias)" 2>/dev/null
             else
                 fail=$((fail+1))
@@ -618,6 +745,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     tmp_base=""
     tmp_wav=""
     srt=""
+    whisper_log=""
     processed_work_units=$((processed_work_units + file_work))
 done
 
