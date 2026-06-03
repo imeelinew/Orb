@@ -11,6 +11,11 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 MODEL="$HOME/whisper-models/ggml-medium.bin"
 WHISPER_LANG="auto"
+LLM_SEGMENTATION_ENABLED=1
+LLM_OPENROUTER_API_KEY="sk-mHu8S0JRQkJravH3fNLi2RDmQCOBVKXTnVqfrYEMsdXIFWk5us5e9gy6YUrBvQAS"
+LLM_OPENROUTER_BASE_URL="https://opencode.ai/zen/go/v1/chat/completions"
+LLM_OPENROUTER_MODEL="mimo-v2.5"
+LLM_SEGMENTATION_BATCH_SIZE=160
 STATE_DIR="$(dirname "$0")/subtitle-jobs"
 current_src=""
 current_state_file=""
@@ -273,6 +278,293 @@ whisper_eta_text() {
     printf "%s\t%s" "$(smooth_eta_text "$total_remaining")" "$processed"
 }
 
+semantic_segment_srt() {
+    local srt_path="$1"
+    [ "$LLM_SEGMENTATION_ENABLED" = "1" ] || return 1
+    [ -s "$srt_path" ] || return 1
+    [ -n "$LLM_OPENROUTER_API_KEY" ] || return 1
+
+    /usr/bin/python3 - \
+        "$srt_path" \
+        "$LLM_OPENROUTER_BASE_URL" \
+        "$LLM_OPENROUTER_MODEL" \
+        "$LLM_OPENROUTER_API_KEY" \
+        "$LLM_SEGMENTATION_BATCH_SIZE" <<'PY'
+import json
+import os
+import re
+import sys
+import tempfile
+import urllib.request
+
+path, base_url, model, api_key, batch_size_text = sys.argv[1:6]
+target_batch_tokens = max(80, int(batch_size_text or "320"))
+MAX_SEGMENT_MS = 8000
+MAX_SEGMENT_CHARS = 130
+TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[\u4e00-\u9fff]")
+
+def parse_time(value):
+    match = re.match(r"(\d+):(\d{2}):(\d{2}),(\d{3})", value.strip())
+    if not match:
+        raise ValueError(f"bad srt timestamp: {value!r}")
+    h, m, s, ms = map(int, match.groups())
+    return ((h * 60 + m) * 60 + s) * 1000 + ms
+
+def fmt_time_ms(ms):
+    ms = max(0, int(round(ms)))
+    h, rem = divmod(ms, 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+def clean_text(lines):
+    text = " ".join(line.strip() for line in lines if line.strip())
+    return re.sub(r"\s+", " ", text).strip()
+
+def extract_tokens(text):
+    return TOKEN_RE.findall(text)
+
+def parse_blocks(raw):
+    blocks = re.split(r"\n\s*\n", raw.strip(), flags=re.MULTILINE)
+    parsed = []
+    for block in blocks:
+        lines = [line.rstrip("\r") for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        time_index = next((i for i, line in enumerate(lines) if "-->" in line), -1)
+        if time_index < 0:
+            continue
+        start_text, end_text = [part.strip().split()[0] for part in lines[time_index].split("-->", 1)]
+        start = parse_time(start_text)
+        end = parse_time(end_text)
+        text = clean_text(lines[time_index + 1:])
+        if text and end > start:
+            tokens = extract_tokens(text)
+            if tokens:
+                parsed.append({"start": start, "end": end, "text": text, "tokens": tokens})
+    return parsed
+
+def cue_tokens(cues):
+    tokens = []
+    for cue_index, cue in enumerate(cues):
+        count = len(cue["tokens"])
+        duration = max(cue["end"] - cue["start"], count)
+        for token_index, token in enumerate(cue["tokens"]):
+            start = cue["start"] + int(duration * token_index / count)
+            end = cue["start"] + int(duration * (token_index + 1) / count)
+            tokens.append({
+                "text": token,
+                "start": start,
+                "end": max(start + 1, end),
+                "cue": cue_index,
+            })
+    return tokens
+
+def token_batches(cues):
+    batches = []
+    current_cues = []
+    current_count = 0
+    for cue in cues:
+        token_count = len(cue["tokens"])
+        if current_cues and current_count + token_count > target_batch_tokens:
+            batches.append(current_cues)
+            current_cues = []
+            current_count = 0
+        current_cues.append(cue)
+        current_count += token_count
+    if current_cues:
+        batches.append(current_cues)
+    return batches
+
+def call_llm(tokens):
+    max_tokens = min(3000, max(1000, len(tokens) * 8))
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Return only JSON: {\"segments\":[\"...\"]}. Split the input tokens into natural "
+                    "subtitle segments. Each segment must join consecutive input tokens in order. "
+                    "You may add punctuation. Do not add, delete, replace, reorder, translate, "
+                    "summarize, or change case of any token. Avoid one-word fragments."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps({
+                    "tokens": [token["text"] for token in tokens],
+                }, ensure_ascii=False),
+            },
+        ],
+    }
+    request = urllib.request.Request(
+        base_url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Orb/1.0 (macOS) OpenAI-compatible client",
+            "HTTP-Referer": "https://orb.local",
+            "X-Title": "Orb Subtitle Semantic Segmentation",
+        },
+        method="POST",
+    )
+
+    def parse_json_content(content):
+        content = content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*", "", content)
+            content = re.sub(r"\s*```$", "", content)
+        if content.startswith("{"):
+            return json.loads(content)
+
+        candidates = []
+        depth = 0
+        start = None
+        in_string = False
+        escape = False
+        for index, ch in enumerate(content):
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                if depth == 0:
+                    start = index
+                depth += 1
+            elif ch == "}" and depth:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidates.append(content[start:index + 1])
+                    start = None
+
+        for candidate in reversed(candidates):
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+        raise ValueError("no valid JSON object in LLM response")
+
+    with urllib.request.urlopen(request, timeout=45) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    message = data["choices"][0]["message"]
+    content = (message.get("content") or message.get("reasoning_content") or "").strip()
+    return parse_json_content(content)
+
+def validate_segments(payload, expected_tokens):
+    segments = payload.get("segments")
+    if not isinstance(segments, list) or not segments:
+        raise ValueError("missing segments")
+    cleaned = []
+    for segment in segments:
+        if not isinstance(segment, str):
+            raise ValueError("segment is not text")
+        text = re.sub(r"\s+", " ", segment).strip()
+        if text:
+            cleaned.append(text)
+    if not cleaned:
+        raise ValueError("empty segments")
+    output_tokens = []
+    for segment in cleaned:
+        output_tokens.extend(extract_tokens(segment))
+    if output_tokens != [token["text"] for token in expected_tokens]:
+        raise ValueError("segments changed token sequence")
+    return cleaned
+
+def plain_join(tokens):
+    return " ".join(token["text"] for token in tokens)
+
+def split_long_segment(text, tokens):
+    if not tokens:
+        return []
+    duration = tokens[-1]["end"] - tokens[0]["start"]
+    if duration <= MAX_SEGMENT_MS and len(text) <= MAX_SEGMENT_CHARS:
+        return [(tokens[0]["start"], tokens[-1]["end"], text)]
+
+    out = []
+    current = []
+    for token in tokens:
+        candidate = current + [token]
+        candidate_text = plain_join(candidate)
+        candidate_duration = candidate[-1]["end"] - candidate[0]["start"]
+        if current and (candidate_duration > MAX_SEGMENT_MS or len(candidate_text) > MAX_SEGMENT_CHARS):
+            out.append((current[0]["start"], current[-1]["end"], plain_join(current)))
+            current = [token]
+        else:
+            current = candidate
+    if current:
+        out.append((current[0]["start"], current[-1]["end"], plain_join(current)))
+    return out
+
+def segments_to_timed_entries(segments, tokens):
+    out = []
+    cursor = 0
+    for segment in segments:
+        count = len(extract_tokens(segment))
+        selected = tokens[cursor:cursor + count]
+        if not selected:
+            raise ValueError("segment token mapping failed")
+        out.extend(split_long_segment(segment, selected))
+        cursor += count
+    if cursor != len(tokens):
+        raise ValueError("segment token count mismatch")
+    return out
+
+def fallback_entries(cues):
+    return [(cue["start"], cue["end"], cue["text"]) for cue in cues]
+
+with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
+    cues = parse_blocks(f.read())
+
+if len(cues) < 2:
+    raise SystemExit(1)
+
+out = []
+semantic_batches = 0
+for batch in token_batches(cues):
+    tokens = cue_tokens(batch)
+    try:
+        payload = call_llm(tokens)
+        segments = validate_segments(payload, tokens)
+        out.extend(segments_to_timed_entries(segments, tokens))
+        semantic_batches += 1
+    except Exception as error:
+        print(f"WARN semantic batch fallback: {error}", file=sys.stderr)
+        out.extend(fallback_entries(batch))
+
+if not out or semantic_batches == 0:
+    raise SystemExit(1)
+
+directory = os.path.dirname(path) or "."
+fd, tmp = tempfile.mkstemp(prefix=".sr-semantic-", suffix=".srt", dir=directory)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        for index, (start, end, text) in enumerate(out, 1):
+            f.write(f"{index}\n")
+            f.write(f"{fmt_time_ms(start)} --> {fmt_time_ms(end)}\n")
+            f.write(text)
+            f.write("\n\n")
+    os.replace(tmp, path)
+except Exception:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+    raise
+PY
+}
+
 normalize_srt() {
     local srt_path="$1"
     [ -s "$srt_path" ] || return 0
@@ -288,7 +580,9 @@ MAX_LINE_WIDTH = 24.0
 MAX_CUE_WIDTH = 46.0
 MAX_CUE_MS = 5000
 MIN_CUE_MS = 900
+SHORT_CUE_JOIN_GAP_MS = 500
 NO_LINE_START = set("，。！？；：、,.!?;:%)]}》」』”’")
+TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[\u4e00-\u9fff]")
 
 path = sys.argv[1]
 
@@ -314,9 +608,80 @@ def char_width(ch):
 def width(text):
     return sum(char_width(ch) for ch in text)
 
+def join_text(left, right):
+    if not left:
+        return right
+    if not right:
+        return left
+    if left[-1].isspace() or right[0].isspace():
+        return left + right
+    if re.search(r"[A-Za-z0-9]$", left) and re.search(r"^[A-Za-z0-9]", right):
+        return left + " " + right
+    return left + right
+
+def token_count(text):
+    return len(TOKEN_RE.findall(text))
+
+def split_units(text):
+    if re.search(r"\s", text):
+        return re.findall(r"\S+\s*", text)
+    return list(text)
+
+def split_long_unit(unit, limit):
+    chunks = []
+    buf = []
+    current = 0.0
+    for ch in unit.strip():
+        w = char_width(ch)
+        if buf and current + w > limit and ch in NO_LINE_START:
+            buf.append(ch)
+            chunks.append("".join(buf).strip())
+            buf = []
+            current = 0.0
+            continue
+        if buf and current + w > limit:
+            chunks.append("".join(buf).strip())
+            buf = [ch]
+            current = w
+        else:
+            buf.append(ch)
+            current += w
+    if buf:
+        chunks.append("".join(buf).strip())
+    return [chunk for chunk in chunks if chunk]
+
+def merge_single_tail(chunks, limit):
+    if len(chunks) < 2 or token_count(chunks[-1]) > 1:
+        return chunks
+    combined = join_text(chunks[-2], chunks[-1])
+    if width(combined) <= limit * 1.35:
+        chunks[-2] = combined
+        chunks.pop()
+    return chunks
+
+def split_by_width(text, limit):
+    chunks = []
+    current = ""
+    for unit in split_units(text):
+        candidate = join_text(current, unit)
+        if current and width(candidate) > limit:
+            chunks.append(current.strip())
+            current = unit.strip()
+        elif not current and width(unit) > limit:
+            chunks.extend(split_long_unit(unit, limit))
+            current = ""
+        else:
+            current = candidate
+    if current.strip():
+        chunks.append(current.strip())
+    return merge_single_tail([chunk for chunk in chunks if chunk], limit)
+
 def clean_text(lines):
     text = " ".join(line.strip() for line in lines if line.strip())
     return re.sub(r"\s+", " ", text).strip()
+
+def text_tokens(text):
+    return TOKEN_RE.findall(text)
 
 def split_by_punctuation(text):
     parts = []
@@ -336,27 +701,7 @@ def split_by_punctuation(text):
     return parts or [text]
 
 def hard_split(text, limit):
-    chunks = []
-    buf = []
-    current = 0.0
-    for ch in text:
-        w = char_width(ch)
-        if buf and current + w > limit and ch in NO_LINE_START:
-            buf.append(ch)
-            chunks.append("".join(buf).strip())
-            buf = []
-            current = 0.0
-            continue
-        if buf and current + w > limit:
-            chunks.append("".join(buf).strip())
-            buf = [ch]
-            current = w
-        else:
-            buf.append(ch)
-            current += w
-    if buf:
-        chunks.append("".join(buf).strip())
-    return [chunk for chunk in chunks if chunk]
+    return split_by_width(text, limit)
 
 def split_text(text):
     pieces = []
@@ -369,7 +714,7 @@ def split_text(text):
     cues = []
     current = ""
     for piece in pieces:
-        candidate = piece if not current else current + piece
+        candidate = join_text(current, piece)
         if current and width(candidate) > MAX_CUE_WIDTH:
             cues.append(current)
             current = piece
@@ -383,27 +728,7 @@ def wrap_lines(text):
     if width(text) <= MAX_LINE_WIDTH:
         return [text]
 
-    lines = []
-    buf = []
-    current = 0.0
-    for ch in text:
-        w = char_width(ch)
-        if buf and current + w > MAX_LINE_WIDTH and ch in NO_LINE_START:
-            buf.append(ch)
-            lines.append("".join(buf).strip())
-            buf = []
-            current = 0.0
-            continue
-        if buf and current + w > MAX_LINE_WIDTH:
-            lines.append("".join(buf).strip())
-            buf = [ch]
-            current = w
-        else:
-            buf.append(ch)
-            current += w
-    if buf:
-        lines.append("".join(buf).strip())
-
+    lines = split_by_width(text, MAX_LINE_WIDTH)
     if len(lines) <= 2:
         return lines
 
@@ -429,12 +754,51 @@ def parse_blocks(raw):
             parsed.append((start, end, text))
     return parsed
 
+def can_join(left, right):
+    left_start, left_end, left_text = left
+    right_start, right_end, right_text = right
+    if right_start - left_end > SHORT_CUE_JOIN_GAP_MS:
+        return False
+    combined = join_text(left_text, right_text)
+    return right_end > left_start and width(combined) <= MAX_CUE_WIDTH * 1.8
+
+def merge_short_cues(blocks):
+    if len(blocks) < 2:
+        return blocks
+
+    out = []
+    index = 0
+    while index < len(blocks):
+        current = blocks[index]
+        current_tokens = text_tokens(current[2])
+        if len(current_tokens) <= 1:
+            prev_ok = bool(out) and can_join(out[-1], current)
+            next_ok = index + 1 < len(blocks) and can_join(current, blocks[index + 1])
+
+            if prev_ok:
+                prev_start, _prev_end, prev_text = out[-1]
+                out[-1] = (prev_start, current[1], join_text(prev_text, current[2]))
+                index += 1
+                continue
+
+            if next_ok:
+                next_start, next_end, next_text = blocks[index + 1]
+                out.append((current[0], next_end, join_text(current[2], next_text)))
+                index += 2
+                continue
+
+        out.append(current)
+        index += 1
+
+    return out
+
 with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
     source = f.read()
 
 blocks = parse_blocks(source)
 if not blocks:
     sys.exit(0)
+blocks = merge_short_cues(blocks)
 
 out = []
 for start, end, text in blocks:
@@ -707,6 +1071,12 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         child_pid=""
 
         if [ "$whisper_status" -eq 0 ]; then
+            notify_file_progress "$src" "$i" "语义分句" 90 "正在整理"
+            if semantic_segment_srt "$srt"; then
+                echo "SEMANTIC SEGMENTED: $srt"
+            else
+                echo "WARN semantic segmentation failed, using local normalization: $srt"
+            fi
             notify_file_progress "$src" "$i" "整理字幕" 92 "即将完成"
             write_job_state "normalize-subtitles"
             if normalize_srt "$srt"; then
