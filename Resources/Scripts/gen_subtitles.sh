@@ -301,7 +301,18 @@ path, base_url, model, api_key, batch_size_text = sys.argv[1:6]
 target_batch_tokens = max(80, int(batch_size_text or "320"))
 MAX_SEGMENT_MS = 8000
 MAX_SEGMENT_CHARS = 130
+MAX_SEGMENT_TOKENS = 18
+MAX_TOKEN_GAP_MS = 1800
+MIN_SPLIT_TOKENS = 3
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[\u4e00-\u9fff]")
+WEAK_END_WORDS = {
+    "a", "an", "the", "to", "for", "of", "in", "on", "at", "with", "from", "by",
+    "and", "or", "but", "so", "because", "if", "when", "while", "as", "than",
+    "like", "that", "this", "these", "those", "your", "my", "our", "their",
+    "i", "you", "we", "they", "he", "she", "it", "do", "does", "did", "is",
+    "are", "was", "were", "be", "being", "been", "am", "can", "could", "would",
+    "should", "will", "gonna", "going", "just", "really", "very",
+}
 
 def parse_time(value):
     match = re.match(r"(\d+):(\d{2}):(\d{2}),(\d{3})", value.strip())
@@ -339,9 +350,15 @@ def parse_blocks(raw):
         end = parse_time(end_text)
         text = clean_text(lines[time_index + 1:])
         if text and end > start:
-            tokens = extract_tokens(text)
-            if tokens:
-                parsed.append({"start": start, "end": end, "text": text, "tokens": tokens})
+            matches = list(TOKEN_RE.finditer(text))
+            if matches:
+                parsed.append({
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                    "tokens": [match.group(0) for match in matches],
+                    "matches": matches,
+                })
     return parsed
 
 def cue_tokens(cues):
@@ -349,14 +366,17 @@ def cue_tokens(cues):
     for cue_index, cue in enumerate(cues):
         count = len(cue["tokens"])
         duration = max(cue["end"] - cue["start"], count)
-        for token_index, token in enumerate(cue["tokens"]):
+        for token_index, match in enumerate(cue["matches"]):
             start = cue["start"] + int(duration * token_index / count)
             end = cue["start"] + int(duration * (token_index + 1) / count)
             tokens.append({
-                "text": token,
+                "text": match.group(0),
                 "start": start,
                 "end": max(start + 1, end),
                 "cue": cue_index,
+                "source": cue["text"],
+                "text_start": match.start(),
+                "text_end": match.end(),
             })
     return tokens
 
@@ -377,7 +397,7 @@ def token_batches(cues):
     return batches
 
 def call_llm(tokens):
-    max_tokens = min(3000, max(1000, len(tokens) * 8))
+    max_tokens = min(1200, max(600, len(tokens) * 4))
     payload = {
         "model": model,
         "temperature": 0,
@@ -387,16 +407,19 @@ def call_llm(tokens):
             {
                 "role": "system",
                 "content": (
-                    "Return only JSON: {\"segments\":[\"...\"]}. Split the input tokens into natural "
-                    "subtitle segments. Each segment must join consecutive input tokens in order. "
-                    "You may add punctuation. Do not add, delete, replace, reorder, translate, "
-                    "summarize, or change case of any token. Avoid one-word fragments."
+                    "Return only JSON: {\"breaks\":[number]}. Tokens are indexed from 1. "
+                    "Choose natural subtitle segment end indexes. The final number must equal "
+                    "the token count. Do not output subtitle text. Avoid one-token or two-token "
+                    "segments unless they are natural standalone phrases. Keep most segments "
+                    "between 4 and 14 tokens; do not create segments longer than 18 tokens unless "
+                    "the text is repetitive sound words."
                 ),
             },
             {
                 "role": "user",
                 "content": json.dumps({
-                    "tokens": [token["text"] for token in tokens],
+                    "token_count": len(tokens),
+                    "tokens": [[index, token["text"]] for index, token in enumerate(tokens, 1)],
                 }, ensure_ascii=False),
             },
         ],
@@ -462,62 +485,211 @@ def call_llm(tokens):
     content = (message.get("content") or message.get("reasoning_content") or "").strip()
     return parse_json_content(content)
 
-def validate_segments(payload, expected_tokens):
-    segments = payload.get("segments")
-    if not isinstance(segments, list) or not segments:
-        raise ValueError("missing segments")
+def validate_breaks(payload, expected_tokens):
+    breaks = payload.get("breaks")
+    if not isinstance(breaks, list) or not breaks:
+        raise ValueError("missing breaks")
     cleaned = []
-    for segment in segments:
-        if not isinstance(segment, str):
-            raise ValueError("segment is not text")
-        text = re.sub(r"\s+", " ", segment).strip()
-        if text:
-            cleaned.append(text)
-    if not cleaned:
-        raise ValueError("empty segments")
-    output_tokens = []
-    for segment in cleaned:
-        output_tokens.extend(extract_tokens(segment))
-    if output_tokens != [token["text"] for token in expected_tokens]:
-        raise ValueError("segments changed token sequence")
-    return cleaned
+    previous = 0
+    total = len(expected_tokens)
+    for value in breaks:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("break is not an integer")
+        if value <= previous or value > total:
+            raise ValueError("breaks are not strictly increasing")
+        cleaned.append(value)
+        previous = value
+    if cleaned[-1] != total:
+        raise ValueError("breaks do not cover all tokens")
+    return repair_breaks(cleaned, expected_tokens)
 
 def plain_join(tokens):
     return " ".join(token["text"] for token in tokens)
 
+def normalized_token_text(token):
+    return token["text"].lower().replace("’", "'").strip(".,!?;:，。！？；：")
+
+def is_weak_token_run(tokens):
+    if not tokens:
+        return False
+    if len(tokens) <= 2:
+        return True
+    last = normalized_token_text(tokens[-1])
+    if last in WEAK_END_WORDS:
+        return True
+    if len(tokens) <= 3 and not has_hard_break_after(tokens[-1]):
+        return True
+    return False
+
+def repair_breaks(breaks, tokens):
+    repaired = list(breaks)
+    changed = True
+    while changed and len(repaired) > 1:
+        changed = False
+        start = 0
+        for index, end in enumerate(list(repaired)):
+            run = tokens[start:end]
+            if is_weak_token_run(run):
+                if index < len(repaired) - 1:
+                    del repaired[index]
+                else:
+                    del repaired[index - 1]
+                changed = True
+                break
+            start = end
+    return repaired
+
+def join_text(left, right):
+    if not left:
+        return right
+    if not right:
+        return left
+    if left[-1].isspace() or right[0].isspace():
+        return left + right
+    if re.search(r"[A-Za-z0-9]$", left) and re.search(r"^[A-Za-z0-9]", right):
+        return left + " " + right
+    return left + right
+
+def token_span_text(tokens):
+    if not tokens:
+        return ""
+    fragments = []
+    index = 0
+    while index < len(tokens):
+        cue = tokens[index]["cue"]
+        source = tokens[index]["source"]
+        start = tokens[index]["text_start"]
+        end = tokens[index]["text_end"]
+        index += 1
+        while index < len(tokens) and tokens[index]["cue"] == cue:
+            end = tokens[index]["text_end"]
+            index += 1
+        fragment = re.sub(r"\s+", " ", source[start:end]).strip()
+        if fragment:
+            fragments.append(fragment)
+    text = ""
+    for fragment in fragments:
+        text = join_text(text, fragment)
+    return text or plain_join(tokens)
+
+def has_hard_break_after(token):
+    tail = token["source"][token["text_end"]:token["text_end"] + 4]
+    return bool(re.search(r"[。！？!?；;：:]", tail))
+
+def has_soft_break_after(token):
+    tail = token["source"][token["text_end"]:token["text_end"] + 3]
+    return bool(re.search(r"[，,、]", tail))
+
+def is_phrase_start(token):
+    return token["text"].lower() in {
+        "and", "but", "so", "because", "when", "while", "if", "then", "now",
+        "okay", "ok", "or", "do", "does", "did", "what", "where", "why", "how",
+        "i", "you", "we", "it", "this", "that",
+    }
+
+def choose_natural_split(tokens, start, hard_limit):
+    lower = start + MIN_SPLIT_TOKENS
+    upper = max(lower, hard_limit)
+    hard_candidates = []
+    soft_candidates = []
+    phrase_candidates = []
+    for end in range(lower, upper + 1):
+        previous = tokens[end - 1]
+        next_token = tokens[end] if end < len(tokens) else None
+        if has_hard_break_after(previous):
+            hard_candidates.append(end)
+        elif has_soft_break_after(previous):
+            soft_candidates.append(end)
+        elif next_token and is_phrase_start(next_token):
+            phrase_candidates.append(end)
+
+    if hard_candidates:
+        return hard_candidates[-1]
+    if soft_candidates:
+        return soft_candidates[-1]
+    if phrase_candidates:
+        return phrase_candidates[-1]
+    return upper
+
+def split_token_run(tokens):
+    chunks = []
+    start = 0
+    while start < len(tokens):
+        if len(tokens) - start <= MAX_SEGMENT_TOKENS:
+            chunks.append(tokens[start:])
+            break
+
+        hard_limit = min(len(tokens), start + MAX_SEGMENT_TOKENS)
+        while hard_limit > start + MIN_SPLIT_TOKENS:
+            candidate = tokens[start:hard_limit]
+            candidate_text = token_span_text(candidate)
+            candidate_duration = candidate[-1]["end"] - candidate[0]["start"]
+            if candidate_duration <= MAX_SEGMENT_MS and len(candidate_text) <= MAX_SEGMENT_CHARS:
+                break
+            hard_limit -= 1
+
+        if hard_limit <= start + MIN_SPLIT_TOKENS:
+            hard_limit = min(len(tokens), start + MAX_SEGMENT_TOKENS)
+
+        end = choose_natural_split(tokens, start, hard_limit)
+        chunks.append(tokens[start:end])
+        start = end
+
+    chunks = [chunk for chunk in chunks if chunk]
+    repaired = []
+    for chunk in chunks:
+        if repaired and is_weak_token_run(repaired[-1]):
+            repaired[-1] = repaired[-1] + chunk
+        else:
+            repaired.append(chunk)
+    if len(repaired) > 1 and is_weak_token_run(repaired[-1]):
+        repaired[-2] = repaired[-2] + repaired[-1]
+        repaired.pop()
+    return repaired
+
+def split_on_time_gaps(tokens):
+    if not tokens:
+        return []
+    runs = []
+    current = [tokens[0]]
+    for token in tokens[1:]:
+        previous = current[-1]
+        if token["start"] - previous["end"] > MAX_TOKEN_GAP_MS:
+            runs.append(current)
+            current = [token]
+        else:
+            current.append(token)
+    if current:
+        runs.append(current)
+    return runs
+
 def split_long_segment(text, tokens):
     if not tokens:
         return []
-    duration = tokens[-1]["end"] - tokens[0]["start"]
-    if duration <= MAX_SEGMENT_MS and len(text) <= MAX_SEGMENT_CHARS:
-        return [(tokens[0]["start"], tokens[-1]["end"], text)]
 
     out = []
-    current = []
-    for token in tokens:
-        candidate = current + [token]
-        candidate_text = plain_join(candidate)
-        candidate_duration = candidate[-1]["end"] - candidate[0]["start"]
-        if current and (candidate_duration > MAX_SEGMENT_MS or len(candidate_text) > MAX_SEGMENT_CHARS):
-            out.append((current[0]["start"], current[-1]["end"], plain_join(current)))
-            current = [token]
-        else:
-            current = candidate
-    if current:
-        out.append((current[0]["start"], current[-1]["end"], plain_join(current)))
+    for run in split_on_time_gaps(tokens):
+        run_text = token_span_text(run)
+        duration = run[-1]["end"] - run[0]["start"]
+        if duration <= MAX_SEGMENT_MS and len(run_text) <= MAX_SEGMENT_CHARS and len(run) <= MAX_SEGMENT_TOKENS:
+            out.append((run[0]["start"], run[-1]["end"], run_text))
+            continue
+
+        for chunk in split_token_run(run):
+            out.append((chunk[0]["start"], chunk[-1]["end"], token_span_text(chunk)))
     return out
 
-def segments_to_timed_entries(segments, tokens):
+def breaks_to_timed_entries(breaks, tokens):
     out = []
-    cursor = 0
-    for segment in segments:
-        count = len(extract_tokens(segment))
-        selected = tokens[cursor:cursor + count]
+    start = 0
+    for end in breaks:
+        selected = tokens[start:end]
         if not selected:
             raise ValueError("segment token mapping failed")
+        segment = token_span_text(selected)
         out.extend(split_long_segment(segment, selected))
-        cursor += count
-    if cursor != len(tokens):
+        start = end
+    if start != len(tokens):
         raise ValueError("segment token count mismatch")
     return out
 
@@ -536,8 +708,8 @@ for batch in token_batches(cues):
     tokens = cue_tokens(batch)
     try:
         payload = call_llm(tokens)
-        segments = validate_segments(payload, tokens)
-        out.extend(segments_to_timed_entries(segments, tokens))
+        breaks = validate_breaks(payload, tokens)
+        out.extend(breaks_to_timed_entries(breaks, tokens))
         semantic_batches += 1
     except Exception as error:
         print(f"WARN semantic batch fallback: {error}", file=sys.stderr)
@@ -583,6 +755,14 @@ MIN_CUE_MS = 900
 SHORT_CUE_JOIN_GAP_MS = 500
 NO_LINE_START = set("，。！？；：、,.!?;:%)]}》」』”’")
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[\u4e00-\u9fff]")
+WEAK_END_WORDS = {
+    "a", "an", "the", "to", "for", "of", "in", "on", "at", "with", "from", "by",
+    "and", "or", "but", "so", "because", "if", "when", "while", "as", "than",
+    "like", "that", "this", "these", "those", "your", "my", "our", "their",
+    "i", "you", "we", "they", "he", "she", "it", "do", "does", "did", "is",
+    "are", "was", "were", "be", "being", "been", "am", "can", "could", "would",
+    "should", "will", "gonna", "going", "just", "really", "very", "kind",
+}
 
 path = sys.argv[1]
 
@@ -622,6 +802,12 @@ def join_text(left, right):
 def token_count(text):
     return len(TOKEN_RE.findall(text))
 
+def ends_with_weak_word(text):
+    tokens = TOKEN_RE.findall(text)
+    if not tokens:
+        return False
+    return tokens[-1].lower().replace("’", "'").strip(".,!?;:，。！？；：") in WEAK_END_WORDS
+
 def split_units(text):
     if re.search(r"\s", text):
         return re.findall(r"\S+\s*", text)
@@ -651,7 +837,7 @@ def split_long_unit(unit, limit):
     return [chunk for chunk in chunks if chunk]
 
 def merge_single_tail(chunks, limit):
-    if len(chunks) < 2 or token_count(chunks[-1]) > 1:
+    if len(chunks) < 2 or (token_count(chunks[-1]) > 1 and not ends_with_weak_word(chunks[-2])):
         return chunks
     combined = join_text(chunks[-2], chunks[-1])
     if width(combined) <= limit * 1.35:
@@ -665,6 +851,9 @@ def split_by_width(text, limit):
     for unit in split_units(text):
         candidate = join_text(current, unit)
         if current and width(candidate) > limit:
+            if ends_with_weak_word(current) and width(candidate) <= limit * 1.35:
+                current = candidate
+                continue
             chunks.append(current.strip())
             current = unit.strip()
         elif not current and width(unit) > limit:
@@ -716,6 +905,9 @@ def split_text(text):
     for piece in pieces:
         candidate = join_text(current, piece)
         if current and width(candidate) > MAX_CUE_WIDTH:
+            if ends_with_weak_word(current) and width(candidate) <= MAX_CUE_WIDTH * 1.25:
+                current = candidate
+                continue
             cues.append(current)
             current = piece
         else:
@@ -792,6 +984,51 @@ def merge_short_cues(blocks):
 
     return out
 
+def output_text(lines):
+    return re.sub(r"\s+", " ", " ".join(lines)).strip()
+
+def is_weak_output_cue(entry):
+    _start, _end, lines = entry
+    text = output_text(lines)
+    return token_count(text) <= 2 or ends_with_weak_word(text)
+
+def can_merge_output(left, right):
+    left_start, left_end, left_lines = left
+    right_start, right_end, right_lines = right
+    if right_start - left_end > SHORT_CUE_JOIN_GAP_MS:
+        return False
+    combined = join_text(output_text(left_lines), output_text(right_lines))
+    return right_end > left_start and width(combined) <= MAX_CUE_WIDTH * 1.8
+
+def merge_weak_output_cues(entries):
+    if len(entries) < 2:
+        return entries
+    out = []
+    index = 0
+    while index < len(entries):
+        current = entries[index]
+        if is_weak_output_cue(current):
+            prev_ok = bool(out) and can_merge_output(out[-1], current)
+            next_ok = index + 1 < len(entries) and can_merge_output(current, entries[index + 1])
+
+            if prev_ok:
+                prev_start, _prev_end, prev_lines = out[-1]
+                merged = join_text(output_text(prev_lines), output_text(current[2]))
+                out[-1] = (prev_start, current[1], wrap_lines(merged))
+                index += 1
+                continue
+
+            if next_ok:
+                next_start, next_end, next_lines = entries[index + 1]
+                merged = join_text(output_text(current[2]), output_text(next_lines))
+                out.append((current[0], next_end, wrap_lines(merged)))
+                index += 2
+                continue
+
+        out.append(current)
+        index += 1
+    return out
+
 with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
     source = f.read()
 
@@ -828,6 +1065,8 @@ for start, end, text in blocks:
     if out and out[-1][1] < end:
         last_start, _last_end, last_lines = out[-1]
         out[-1] = (last_start, end, last_lines)
+
+out = merge_weak_output_cues(out)
 
 directory = os.path.dirname(path) or "."
 fd, tmp = tempfile.mkstemp(prefix=".sr-srt-", suffix=".srt", dir=directory)
