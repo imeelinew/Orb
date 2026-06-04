@@ -231,6 +231,28 @@ print(int(latest))
 PY
 }
 
+parse_whisper_language() {
+    local log_path="$1"
+    [ -s "$log_path" ] || {
+        printf "en"
+        return 0
+    }
+
+    /usr/bin/python3 - "$log_path" <<'PY'
+import re
+import sys
+
+language = "en"
+pattern = re.compile(r"auto-detected language:\s*([A-Za-z_-]+)")
+with open(sys.argv[1], "r", encoding="utf-8", errors="ignore") as f:
+    for line in f:
+        match = pattern.search(line)
+        if match:
+            language = match.group(1).split("_", 1)[0].lower()
+print(language)
+PY
+}
+
 smooth_eta_text() {
     local raw_eta="$1"
     local smoothed max_down
@@ -742,9 +764,10 @@ PY
 
 normalize_srt() {
     local srt_path="$1"
+    local source_lang="${2:-en}"
     [ -s "$srt_path" ] || return 0
 
-    /usr/bin/python3 - "$srt_path" <<'PY'
+    /usr/bin/python3 - "$srt_path" "$source_lang" <<'PY'
 import os
 import re
 import sys
@@ -768,6 +791,8 @@ WEAK_END_WORDS = {
 }
 
 path = sys.argv[1]
+source_lang = (sys.argv[2] if len(sys.argv) > 2 else "en").lower()
+english_like = source_lang in ("", "auto", "en")
 
 def parse_time(value):
     match = re.match(r"(\d+):(\d{2}):(\d{2}),(\d{3})", value.strip())
@@ -1038,7 +1063,8 @@ with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
 blocks = parse_blocks(source)
 if not blocks:
     sys.exit(0)
-blocks = merge_short_cues(blocks)
+if english_like:
+    blocks = merge_short_cues(blocks)
 
 out = []
 for start, end, text in blocks:
@@ -1069,7 +1095,8 @@ for start, end, text in blocks:
         last_start, _last_end, last_lines = out[-1]
         out[-1] = (last_start, end, last_lines)
 
-out = merge_weak_output_cues(out)
+if english_like:
+    out = merge_weak_output_cues(out)
 
 directory = os.path.dirname(path) or "."
 fd, tmp = tempfile.mkstemp(prefix=".sr-srt-", suffix=".srt", dir=directory)
@@ -1092,6 +1119,7 @@ PY
 
 translate_srt_to_bilingual() {
     local srt_path="$1"
+    local source_lang="${2:-en}"
     [ "$LLM_TRANSLATION_ENABLED" = "1" ] || return 0
     [ -s "$srt_path" ] || return 0
     [ -n "$LLM_OPENROUTER_API_KEY" ] || return 0
@@ -1102,7 +1130,8 @@ translate_srt_to_bilingual() {
         "$LLM_OPENROUTER_MODEL" \
         "$LLM_OPENROUTER_API_KEY" \
         "$LLM_TRANSLATION_BATCH_CUES" \
-        "$LLM_TRANSLATION_CONTEXT_CUES" <<'PY'
+        "$LLM_TRANSLATION_CONTEXT_CUES" \
+        "$source_lang" <<'PY'
 import json
 import os
 import re
@@ -1111,9 +1140,10 @@ import tempfile
 import unicodedata
 import urllib.request
 
-path, base_url, model, api_key, batch_size_text, context_size_text = sys.argv[1:7]
+path, base_url, model, api_key, batch_size_text, context_size_text, source_lang = sys.argv[1:8]
 batch_size = max(10, int(batch_size_text or "80"))
 context_size = max(0, int(context_size_text or "8"))
+source_lang = (source_lang or "en").lower()
 MAX_ZH_LINE_WIDTH = 28.0
 
 def parse_time(value):
@@ -1250,6 +1280,38 @@ def call_llm(payload):
     content = (message.get("content") or message.get("reasoning_content") or "").strip()
     return parse_json_content(content)
 
+def source_language_name():
+    names = {
+        "en": "English",
+        "ja": "Japanese",
+        "zh": "Chinese",
+        "ko": "Korean",
+        "fr": "French",
+        "de": "German",
+        "es": "Spanish",
+        "it": "Italian",
+        "pt": "Portuguese",
+        "ru": "Russian",
+    }
+    return names.get(source_lang, "source-language")
+
+def translation_system_prompt():
+    base = (
+        "Return only JSON: {\"translations\":[{\"id\":number,\"zh\":\"...\"}]}. "
+        f"Translate the target {source_language_name()} subtitle cues into natural Simplified Chinese. "
+        "Use surrounding context to keep names, terms, pronouns, style, and repeated concepts consistent. "
+        "Return translations only for target ids. Preserve item count and ids. "
+    )
+    if source_lang == "ja":
+        return (
+            base
+            + "Preserve the soft ASMR and roleplay tone. Do not over-explain, do not invent missing details, "
+            + "and keep short interjections natural in Chinese."
+        )
+    if source_lang == "en":
+        return base + "Do not translate ASMR sound words too literally; keep them natural and concise."
+    return base + "Do not over-explain or invent missing details; keep the subtitle concise."
+
 def translate_batch(cues, start, end):
     translations, failures = translate_batch_range(cues, start, end)
     if failures:
@@ -1275,13 +1337,7 @@ def translate_batch_range(cues, start, end):
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "Return only JSON: {\"translations\":[{\"id\":number,\"zh\":\"...\"}]}. "
-                    "Translate the target English subtitle cues into natural Simplified Chinese. "
-                    "Use surrounding context to keep names, terms, pronouns, style, and repeated concepts consistent. "
-                    "Return translations only for target ids. Preserve item count and ids. "
-                    "Do not translate ASMR sound words too literally; keep them natural and concise."
-                ),
+                "content": translation_system_prompt(),
             },
             {
                 "role": "user",
@@ -1593,22 +1649,28 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         child_pid=""
 
         if [ "$whisper_status" -eq 0 ]; then
-            notify_file_progress "$src" "$i" "语义分句" 90 "正在整理"
-            if semantic_segment_srt "$srt"; then
-                echo "SEMANTIC SEGMENTED: $srt"
+            detected_lang="$(parse_whisper_language "$whisper_log")"
+            echo "DETECTED LANGUAGE: $detected_lang"
+            if [ "$detected_lang" = "en" ]; then
+                notify_file_progress "$src" "$i" "语义分句" 90 "正在整理"
+                if semantic_segment_srt "$srt"; then
+                    echo "SEMANTIC SEGMENTED: $srt"
+                else
+                    echo "WARN semantic segmentation failed, using local normalization: $srt"
+                fi
             else
-                echo "WARN semantic segmentation failed, using local normalization: $srt"
+                echo "SKIP semantic segmentation for non-English language: $detected_lang"
             fi
             notify_file_progress "$src" "$i" "整理字幕" 92 "即将完成"
             write_job_state "normalize-subtitles"
-            if normalize_srt "$srt"; then
+            if normalize_srt "$srt" "$detected_lang"; then
                 echo "NORMALIZED: $srt"
             else
                 echo "WARN normalize failed, keeping original: $srt"
             fi
             notify_file_progress "$src" "$i" "翻译字幕" 93 "正在整理"
             write_job_state "translate-subtitles"
-            if translate_srt_to_bilingual "$srt"; then
+            if translate_srt_to_bilingual "$srt" "$detected_lang"; then
                 echo "BILINGUAL TRANSLATED: $srt"
             else
                 echo "WARN bilingual translation failed, keeping English subtitles: $srt"
