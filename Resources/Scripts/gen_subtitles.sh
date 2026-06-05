@@ -248,7 +248,7 @@ with open(sys.argv[1], "r", encoding="utf-8", errors="ignore") as f:
     for line in f:
         match = pattern.search(line)
         if match:
-            language = match.group(1).split("_", 1)[0].lower()
+            language = re.split(r"[-_]", match.group(1), 1)[0].lower()
 print(language)
 PY
 }
@@ -1668,12 +1668,16 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
             else
                 echo "WARN normalize failed, keeping original: $srt"
             fi
-            notify_file_progress "$src" "$i" "翻译字幕" 93 "正在整理"
-            write_job_state "translate-subtitles"
-            if translate_srt_to_bilingual "$srt" "$detected_lang"; then
-                echo "BILINGUAL TRANSLATED: $srt"
+            if [[ "$detected_lang" == zh* ]]; then
+                echo "SKIP bilingual translation for Chinese source language: $detected_lang"
             else
-                echo "WARN bilingual translation failed, keeping English subtitles: $srt"
+                notify_file_progress "$src" "$i" "翻译字幕" 93 "正在整理"
+                write_job_state "translate-subtitles"
+                if translate_srt_to_bilingual "$srt" "$detected_lang"; then
+                    echo "BILINGUAL TRANSLATED: $srt"
+                else
+                    echo "WARN bilingual translation failed, keeping source-language subtitles: $srt"
+                fi
             fi
             notify_file_progress "$src" "$i" "封装字幕" 96 "即将完成"
             if embed_subtitles "$src" "$srt"; then

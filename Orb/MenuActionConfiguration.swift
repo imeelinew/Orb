@@ -155,25 +155,6 @@ enum MenuBarConfiguration {
     }
 }
 
-enum ClipboardConfiguration {
-    static let isEnabledKey = "clipboardEnabled"
-
-    static var defaultIsEnabled: Bool {
-        false
-    }
-
-    static func isEnabled() -> Bool {
-        guard UserDefaults.standard.object(forKey: isEnabledKey) != nil else {
-            return defaultIsEnabled
-        }
-        return UserDefaults.standard.bool(forKey: isEnabledKey)
-    }
-
-    static func setEnabled(_ isEnabled: Bool) {
-        UserDefaults.standard.set(isEnabled, forKey: isEnabledKey)
-    }
-}
-
 enum InputCorrectionConfiguration {
     static let isEnabledKey = "inputCorrectionEnabled"
     static let modelSourceKey = "inputCorrectionModelSource"

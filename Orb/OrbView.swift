@@ -11,7 +11,6 @@ struct OrbView: View {
     @State private var enabledWindowOperationIDs = WindowOperationConfiguration.enabledIDs()
     @State private var showsNetworkSpeed = MenuBarConfiguration.showsNetworkSpeed()
     @State private var inputCorrectionEnabled = InputCorrectionConfiguration.isEnabled()
-    @State private var clipboardEnabled = ClipboardConfiguration.isEnabled()
     @State private var inputCorrectionModelSource = InputCorrectionConfiguration.modelSource()
     @State private var inputCorrectionAPIKey = KeychainStore.string(for: KeychainStore.inputCorrectionAPIKeyAccount)
     @State private var inputCorrectionModel = InputCorrectionConfiguration.model()
@@ -31,7 +30,6 @@ struct OrbView: View {
         case windowOperations
         case menuBar
         case inputCorrection
-        case clipboard
 
         var id: String { rawValue }
         var title: String {
@@ -44,8 +42,6 @@ struct OrbView: View {
                 return "菜单栏"
             case .inputCorrection:
                 return "输入框"
-            case .clipboard:
-                return "剪贴板"
             }
         }
 
@@ -59,8 +55,6 @@ struct OrbView: View {
                 return "menubar.rectangle"
             case .inputCorrection:
                 return "text.cursor"
-            case .clipboard:
-                return "clipboard"
             }
         }
 
@@ -90,12 +84,6 @@ struct OrbView: View {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-            case .clipboard:
-                return LinearGradient(
-                    colors: [Color(red: 1.0, green: 0.72, blue: 0.38), Color(red: 0.98, green: 0.42, blue: 0.18)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
             }
         }
     }
@@ -114,8 +102,6 @@ struct OrbView: View {
             return "搜索菜单栏"
         case .inputCorrection:
             return "搜索输入框"
-        case .clipboard:
-            return "搜索剪贴板"
         }
     }
 
@@ -131,8 +117,6 @@ struct OrbView: View {
                     return menuBarSearchText
                 case .inputCorrection:
                     return inputCorrectionSearchText
-                case .clipboard:
-                    return ""
                 }
             },
             set: { newValue in
@@ -145,8 +129,6 @@ struct OrbView: View {
                     menuBarSearchText = newValue
                 case .inputCorrection:
                     inputCorrectionSearchText = newValue
-                case .clipboard:
-                    break
                 }
             }
         )
@@ -236,9 +218,6 @@ struct OrbView: View {
         }
         .onChange(of: inputCorrectionEnabled) { _, _ in
             persistInputCorrectionEnabled()
-        }
-        .onChange(of: clipboardEnabled) { _, _ in
-            persistClipboardConfiguration()
         }
     }
 
@@ -365,12 +344,6 @@ struct OrbView: View {
                     }
                 }
             }
-        case .clipboard:
-            Form {
-                Section("总开关") {
-                    Toggle("启用剪贴板", isOn: $clipboardEnabled)
-                }
-            }
         }
     }
 
@@ -433,10 +406,6 @@ struct OrbView: View {
 
     private func persistInputCorrectionEnabled() {
         InputCorrectionConfiguration.setEnabled(inputCorrectionEnabled)
-    }
-
-    private func persistClipboardConfiguration() {
-        ClipboardConfiguration.setEnabled(clipboardEnabled)
     }
 
     private var inputCorrectionModelSourcePicker: some View {

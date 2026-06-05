@@ -31,7 +31,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let windowOperationManager = WindowOperationManager()
     private let networkSpeedMonitor = NetworkSpeedMonitor()
     private let inputCorrectionManager = InputCorrectionManager()
-    private let clipboardManager = ClipboardManager()
     private var notificationPopover: NSPopover?
     private var notificationPopoverMode: MenuBarPopoverMode?
     private var notificationDismissWorkItem: DispatchWorkItem?
@@ -65,7 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installApplicationScripts()
         setFinderExtensionEnabled(true)
         windowOperationManager.start()
-        clipboardManager.refresh()
         inputCorrectionManager.refresh()
         observeDefaultsChanges()
         startPopoverEventWatcher()
@@ -77,7 +75,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         networkSpeedMonitor.stop()
         inputCorrectionManager.stop()
-        clipboardManager.stop()
         windowOperationManager.stop()
         disableFinderExtensionForTermination()
     }
@@ -369,7 +366,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.statusItem.menu = nil
                 self?.refreshStatusItemConfiguration()
                 self?.inputCorrectionManager.refresh()
-                self?.clipboardManager.refresh()
             }
         }
     }
