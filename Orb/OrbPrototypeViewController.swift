@@ -23,9 +23,9 @@ private let resizeSynchronousLayerActions: [String: CAAction] = [
 @MainActor
 final class OrbPrototypeViewController: NSViewController {
     private let showcaseView = ShowcaseView()
-    private let sceneView = InertialSphereSceneView(frame: .zero)
+    private let sceneView = MetalAuroraView(frame: .zero)
     private let listPlaceholder = PrototypeListPlaceholderView()
-    private let subtitleLabel = NSTextField(labelWithString: "轻轻双指滑动，转动这个实体")
+    private let subtitleLabel = NSTextField(labelWithString: "轻轻移动鼠标，让这个实体回应你")
     private let actionButton = CapsuleActionButton(title: "显示列表")
 
     override func loadView() {
