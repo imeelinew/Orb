@@ -9,7 +9,7 @@ setopt local_options no_nomatch
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 . "$(dirname "$0")/orb_popover.sh"
 
-MODEL="$HOME/whisper-models/ggml-medium.bin"
+MODEL="$HOME/whisper-models/ggml-large-v3-turbo.bin"
 WHISPER_LANG="auto"
 LLM_SEGMENTATION_ENABLED=1
 LLM_OPENROUTER_API_KEY="sk-mHu8S0JRQkJravH3fNLi2RDmQCOBVKXTnVqfrYEMsdXIFWk5us5e9gy6YUrBvQAS"
@@ -1574,7 +1574,7 @@ if [ "${#todo[@]}" -eq 0 ]; then
     exit 0
 fi
 
-# 实测 whisper-cpp medium 在 Apple Silicon (Metal) 上约 13x 实时。
+# whisper.cpp large-v3-turbo on Apple Silicon (Metal) is fast enough for optimistic ETA.
 eta=0
 for work_units in "${todo_work[@]}"; do
     eta=$((eta + $(estimated_file_seconds "$work_units")))
