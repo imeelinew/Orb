@@ -55,12 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var subtitleMenuBarProgress: SubtitleMenuBarProgress?
     private var shouldClearSubtitleProgressWhenPopoverCloses = false
     private var pendingSubtitlePopoverWorkItem: DispatchWorkItem?
-    private var pendingStatusItemSingleClickWorkItem: DispatchWorkItem?
     private let statusButtonIconSize: CGFloat = 18
     private let statusIconImageSize: CGFloat = 15
     private let statusButtonLabelSpacing: CGFloat = 7
     private let statusButtonHorizontalPadding: CGFloat = 2
-    private let statusItemSingleClickDelay: TimeInterval = NSEvent.doubleClickInterval
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -184,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.toolTip = "Orb"
         button.target = self
         button.action = #selector(handleStatusItemClick(_:))
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.sendAction(on: StatusItemClickHandling.actionEventMask)
 
         let title = isShowingNetworkSpeed ? networkSpeedTitle(for: currentNetworkSpeedSample) : nil
         if title == nil {
@@ -381,44 +379,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return
         }
 
-        switch event.type {
-        case .rightMouseUp:
-            cancelPendingStatusItemSingleClick()
+        switch StatusItemClickHandling.action(for: event.type) {
+        case .secondary:
             popUpStatusItemMenu(in: button)
-        case .leftMouseUp where event.clickCount >= 2:
-            cancelPendingStatusItemSingleClick()
-            popUpStatusItemMenu(in: button)
-        case .leftMouseUp:
-            scheduleStatusItemSingleClick()
-        default:
+        case .primary:
+            handleStatusItemPrimaryClick()
+        case .ignore:
             return
         }
     }
 
-    private func scheduleStatusItemSingleClick() {
-        cancelPendingStatusItemSingleClick()
-        var work: DispatchWorkItem?
-        work = DispatchWorkItem { [weak self] in
-            guard let self,
-                  let currentWork = work,
-                  !currentWork.isCancelled,
-                  pendingStatusItemSingleClickWorkItem === currentWork else {
-                return
-            }
-            pendingStatusItemSingleClickWorkItem = nil
-            handleStatusItemSingleClickAfterDelay()
-        }
-        guard let work else { return }
-        pendingStatusItemSingleClickWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + statusItemSingleClickDelay, execute: work)
-    }
-
-    private func cancelPendingStatusItemSingleClick() {
-        pendingStatusItemSingleClickWorkItem?.cancel()
-        pendingStatusItemSingleClickWorkItem = nil
-    }
-
-    private func handleStatusItemSingleClickAfterDelay() {
+    private func handleStatusItemPrimaryClick() {
         guard let state = subtitleMenuBarProgress else {
             if let button = statusItem.button {
                 popUpStatusItemMenu(in: button)
@@ -891,7 +862,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func clearSubtitleMenuBarProgress() {
         pendingSubtitlePopoverWorkItem?.cancel()
         pendingSubtitlePopoverWorkItem = nil
-        cancelPendingStatusItemSingleClick()
         subtitleMenuBarProgress = nil
         shouldClearSubtitleProgressWhenPopoverCloses = false
         refreshStatusItemButton()
