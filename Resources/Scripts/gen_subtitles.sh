@@ -11,6 +11,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 MODEL="$HOME/whisper-models/ggml-large-v3-turbo.bin"
 WHISPER_LANG="auto"
+WHISPER_MODEL_SLOT_COUNT=1
 LLM_SEGMENTATION_ENABLED=1
 LLM_OPENROUTER_API_KEY="sk-mHu8S0JRQkJravH3fNLi2RDmQCOBVKXTnVqfrYEMsdXIFWk5us5e9gy6YUrBvQAS"
 LLM_OPENROUTER_BASE_URL="https://opencode.ai/zen/go/v1/chat/completions"
@@ -20,6 +21,7 @@ LLM_TRANSLATION_ENABLED=1
 LLM_TRANSLATION_BATCH_CUES=80
 LLM_TRANSLATION_CONTEXT_CUES=8
 STATE_DIR="$(dirname "$0")/subtitle-jobs"
+MODEL_SLOT_DIR="$STATE_DIR/model-slots"
 current_src=""
 current_state_file=""
 tmp_base=""
@@ -27,6 +29,7 @@ tmp_wav=""
 srt=""
 whisper_log=""
 child_pid=""
+whisper_model_slot_dir=""
 POSTPROCESS_ESTIMATE_SECONDS=8
 ETA_ESTIMATING_TEXT="正在估算"
 displayed_eta=""
@@ -80,6 +83,54 @@ os.replace(tmp, state_file)
 PY
 }
 
+whisper_model_slot_count() {
+    local count="${WHISPER_MODEL_SLOT_COUNT:-1}"
+    case "$count" in
+        ''|*[!0-9]*|0)
+            count=1
+            ;;
+    esac
+    printf "%d" "$count"
+}
+
+release_whisper_model_slot() {
+    if [ -n "$whisper_model_slot_dir" ]; then
+        /bin/rm -rf "$whisper_model_slot_dir"
+        whisper_model_slot_dir=""
+    fi
+}
+
+acquire_whisper_model_slot() {
+    local index="$1"
+    local slot_count slot lock_dir lock_pid
+    slot_count="$(whisper_model_slot_count)"
+    /bin/mkdir -p "$MODEL_SLOT_DIR"
+
+    while true; do
+        for (( slot = 1; slot <= slot_count; slot++ )); do
+            lock_dir="$MODEL_SLOT_DIR/slot-$slot.lock"
+            if /bin/mkdir "$lock_dir" 2>/dev/null; then
+                whisper_model_slot_dir="$lock_dir"
+                {
+                    printf "%s\n" "$$"
+                    printf "%s\n" "$current_src"
+                    /bin/date +%s
+                } > "$lock_dir/owner"
+                return 0
+            fi
+
+            lock_pid="$(/usr/bin/head -n 1 "$lock_dir/owner" 2>/dev/null || true)"
+            if [ -n "$lock_pid" ] && ! /bin/kill -0 "$lock_pid" 2>/dev/null; then
+                /bin/rm -rf "$lock_dir"
+            fi
+        done
+
+        write_job_state "waiting-whisper-slot"
+        notify_file_progress "$current_src" "$index" "等待识别队列" 12 "等待模型空闲"
+        /bin/sleep 2
+    done
+}
+
 cleanup_current_job() {
     local dir filename stem ext tmp_video
     if [ -n "$child_pid" ]; then
@@ -87,6 +138,7 @@ cleanup_current_job() {
         wait "$child_pid" 2>/dev/null || true
         child_pid=""
     fi
+    release_whisper_model_slot
     if [ -n "$tmp_base" ] || [ -n "$tmp_wav" ] || [ -n "$srt" ] || [ -n "$whisper_log" ]; then
         /bin/rm -f "$tmp_base" "$tmp_wav" "$srt" "$whisper_log"
     fi
@@ -1619,6 +1671,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     ffmpeg_status=$?
     child_pid=""
     if [ "$ffmpeg_status" -eq 0 ]; then
+        acquire_whisper_model_slot "$i"
         notify_file_progress "$src" "$i" "识别字幕" 12 "$ETA_ESTIMATING_TEXT"
         echo "--- whisper-cli: $src"
         whisper_start_ts=$(/bin/date +%s)
@@ -1647,6 +1700,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         wait "$child_pid"
         whisper_status=$?
         child_pid=""
+        release_whisper_model_slot
 
         if [ "$whisper_status" -eq 0 ]; then
             detected_lang="$(parse_whisper_language "$whisper_log")"
