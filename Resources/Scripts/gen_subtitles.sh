@@ -952,6 +952,67 @@ def clean_text(lines):
 def text_tokens(text):
     return TOKEN_RE.findall(text)
 
+def repetition_key(text):
+    tokens = text_tokens(text)
+    if len(tokens) < 5:
+        return ""
+    return " ".join(
+        token.lower().replace("’", "'").strip(".,!?;:，。！？；：")
+        for token in tokens
+    )
+
+def collapse_repeated_phrase_text(text):
+    min_repeated_tokens = 5
+    changed = True
+    while changed:
+        changed = False
+        matches = list(TOKEN_RE.finditer(text))
+        keys = [
+            match.group(0).lower().replace("’", "'").strip(".,!?;:，。！？；：")
+            for match in matches
+        ]
+        max_run = len(keys) // 2
+        for run_length in range(max_run, min_repeated_tokens - 1, -1):
+            for start in range(0, len(keys) - run_length * 2 + 1):
+                left = keys[start:start + run_length]
+                right = keys[start + run_length:start + run_length * 2]
+                if left != right:
+                    continue
+                remove_start = matches[start + run_length].start()
+                remove_end = matches[start + run_length * 2 - 1].end()
+                text = join_text(text[:remove_start].rstrip(), text[remove_end:].lstrip())
+                text = re.sub(r"\s+", " ", text).strip()
+                changed = True
+                break
+            if changed:
+                break
+    return text
+
+def remove_repeated_phrase_runs(blocks):
+    if len(blocks) < 3:
+        return blocks
+
+    cleaned = []
+    index = 0
+    while index < len(blocks):
+        start, end, text = blocks[index]
+        key = repetition_key(text)
+        if not key:
+            cleaned.append(blocks[index])
+            index += 1
+            continue
+
+        run_end = index + 1
+        while run_end < len(blocks) and repetition_key(blocks[run_end][2]) == key:
+            run_end += 1
+
+        cleaned.append(blocks[index])
+        if run_end - index >= 3:
+            index = run_end
+        else:
+            index += 1
+    return cleaned
+
 def split_by_punctuation(text):
     parts = []
     buf = []
@@ -1116,6 +1177,8 @@ blocks = parse_blocks(source)
 if not blocks:
     sys.exit(0)
 if english_like:
+    blocks = [(start, end, collapse_repeated_phrase_text(text)) for start, end, text in blocks]
+    blocks = remove_repeated_phrase_runs(blocks)
     blocks = merge_short_cues(blocks)
 
 out = []
