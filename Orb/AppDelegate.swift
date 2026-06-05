@@ -5,6 +5,11 @@ private let finderSyncBundleIdentifier = "com.eli.Orb.FinderSync"
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+    private static let leftArrowKeyEquivalent = String(UnicodeScalar(NSLeftArrowFunctionKey)!)
+    private static let rightArrowKeyEquivalent = String(UnicodeScalar(NSRightArrowFunctionKey)!)
+    private static let upArrowKeyEquivalent = String(UnicodeScalar(NSUpArrowFunctionKey)!)
+    private static let downArrowKeyEquivalent = String(UnicodeScalar(NSDownArrowFunctionKey)!)
+
     private enum MenuBarPopoverMode {
         case notification
         case subtitleProgress
@@ -392,7 +397,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func scheduleStatusItemSingleClick() {
         cancelPendingStatusItemSingleClick()
-        guard subtitleMenuBarProgress != nil else { return }
         var work: DispatchWorkItem?
         work = DispatchWorkItem { [weak self] in
             guard let self,
@@ -415,7 +419,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func handleStatusItemSingleClickAfterDelay() {
-        guard let state = subtitleMenuBarProgress else { return }
+        guard let state = subtitleMenuBarProgress else {
+            if let button = statusItem.button {
+                popUpStatusItemMenu(in: button)
+            }
+            return
+        }
         if state.isComplete {
             clearSubtitleCompletionFromStatusItemClick()
             return
@@ -446,31 +455,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             to: menu,
             operation: .leftHalf,
             action: #selector(moveFocusedWindowLeftHalf),
-            shortcutLabel: "⌘←"
+            keyEquivalent: Self.leftArrowKeyEquivalent
         )
         addWindowOperationItem(
             to: menu,
             operation: .rightHalf,
             action: #selector(moveFocusedWindowRightHalf),
-            shortcutLabel: "⌘→"
+            keyEquivalent: Self.rightArrowKeyEquivalent
         )
         addWindowOperationItem(
             to: menu,
             operation: .maximized,
             action: #selector(maximizeFocusedWindow),
-            shortcutLabel: "⌘↑"
+            keyEquivalent: Self.upArrowKeyEquivalent
         )
         addWindowOperationItem(
             to: menu,
             operation: .centered,
             action: #selector(centerFocusedWindow),
-            shortcutLabel: "⌘↓"
+            keyEquivalent: Self.downArrowKeyEquivalent
         )
         addWindowOperationItem(
             to: menu,
             operation: .minimizeOthers,
             action: #selector(minimizeOtherApplicationWindows),
-            shortcutLabel: "⌘⌥↓"
+            keyEquivalent: Self.downArrowKeyEquivalent,
+            modifierMask: [.command, .option]
         )
         if !menu.items.isEmpty {
             menu.addItem(.separator())
@@ -492,11 +502,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         to menu: NSMenu,
         operation: WindowOperation,
         action: Selector,
-        shortcutLabel: String
+        keyEquivalent: String,
+        modifierMask: NSEvent.ModifierFlags = .command
     ) {
         guard WindowOperationConfiguration.isEnabled(operation) else { return }
-        let title = shortcutLabel.isEmpty ? operation.title : "\(operation.title)  \(shortcutLabel)"
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        let item = NSMenuItem(title: operation.title, action: action, keyEquivalent: keyEquivalent)
+        item.keyEquivalentModifierMask = modifierMask
         item.target = self
         item.image = NSImage(systemSymbolName: operation.symbolName, accessibilityDescription: operation.title)
         item.image?.isTemplate = true
