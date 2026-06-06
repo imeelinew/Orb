@@ -11,11 +11,11 @@
 		A00000000000000000000002 /* Orb.icon in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* Orb.icon */; };
 		A00000000000000000000003 /* Scripts in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* Scripts */; };
 		A00000000000000000000004 /* Templates in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* Templates */; };
-		A00000000000000000000022 /* Skills in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* Skills */; };
 		A00000000000000000000005 /* OrbFinderSync.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* OrbFinderSync.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A00000000000000000000019 /* FinderSyncExt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001B /* FinderSyncExt.swift */; };
 		A0000000000000000000001A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001C /* Assets.xcassets */; };
 		A00000000000000000000020 /* Modules in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* Modules */; };
+		A00000000000000000000022 /* Skills in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* Skills */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,12 +64,12 @@
 		A00000000000000000000009 /* Orb.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Orb.icon; sourceTree = "<group>"; };
 		A0000000000000000000000A /* Scripts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Scripts; path = Resources/Scripts; sourceTree = SOURCE_ROOT; };
 		A0000000000000000000000B /* Templates */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Templates; path = Resources/Templates; sourceTree = SOURCE_ROOT; };
-		A00000000000000000000023 /* Skills */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Skills; path = Resources/Skills; sourceTree = SOURCE_ROOT; };
 		A0000000000000000000001B /* FinderSyncExt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSyncExt.swift; sourceTree = "<group>"; };
 		A0000000000000000000001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A0000000000000000000001D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A0000000000000000000001E /* OrbFinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OrbFinderSync.entitlements; sourceTree = "<group>"; };
 		A00000000000000000000021 /* Modules */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Modules; path = Resources/Modules; sourceTree = SOURCE_ROOT; };
+		A00000000000000000000023 /* Skills */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Skills; path = Resources/Skills; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */

@@ -62,9 +62,11 @@ Use this skill for Orb app work and Orb module development. Treat the live repos
 ## When Editing Orb UI
 
 - Keep the standalone `模块` case first in the sidebar.
-- Keep enabled modules under the sidebar section title `模块`.
+- Keep enabled built-in modules under the sidebar section title `内置模块`.
+- Keep enabled user-installed modules under the sidebar section title `自定义模块`.
 - Turning off a module removes that case from the sidebar.
 - The module page shows each module with icon, name, desc, and a right-side toggle.
+- Installing or uninstalling a module should show a toast only after the module actually installs or uninstalls successfully.
 - Module enablement belongs only on the standalone `模块` page. Do not put module on/off toggles inside an individual module detail view.
 - Do not show developer/debug metadata such as executable status strings or package paths in normal module detail UI unless the user explicitly asks for diagnostics.
 - Individual module detail views should expose only meaningful user-facing controls, capabilities, or settings from that module.

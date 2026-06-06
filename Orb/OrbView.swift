@@ -25,6 +25,7 @@ struct OrbView: View {
     @State private var menuBarSearchText = ""
     @State private var inputCorrectionSearchText = ""
     @State private var externalModuleSettings: [String: String] = [:]
+    @State private var toast: AppToast?
     private let sidebarIconTileSize: Double = 22
     private let sidebarIconSymbolSize: Double = 11
     private let sidebarIconCornerRadius: Double = 6
@@ -149,10 +150,22 @@ struct OrbView: View {
                     SidebarPageLabel(page: .modules)
                 }
 
-                Section("模块") {
-                    ForEach(enabledModules) { module in
-                        NavigationLink(value: SettingsPage.module(module.id)) {
-                            SidebarModuleLabel(module: module)
+                if !enabledBundledModules.isEmpty {
+                    Section("内置模块") {
+                        ForEach(enabledBundledModules) { module in
+                            NavigationLink(value: SettingsPage.module(module.id)) {
+                                SidebarModuleLabel(module: module)
+                            }
+                        }
+                    }
+                }
+
+                if !enabledUserModules.isEmpty {
+                    Section("自定义模块") {
+                        ForEach(enabledUserModules) { module in
+                            NavigationLink(value: SettingsPage.module(module.id)) {
+                                SidebarModuleLabel(module: module)
+                            }
                         }
                     }
                 }
@@ -191,6 +204,7 @@ struct OrbView: View {
         .environment(\.sidebarIconSymbolSize, sidebarIconSymbolSize)
         .environment(\.sidebarIconCornerRadius, sidebarIconCornerRadius)
         .searchable(text: searchTextBinding, placement: .toolbar, prompt: Text(searchPrompt))
+        .toast($toast)
         .alert(
             "模型配置",
             isPresented: Binding(
@@ -397,6 +411,14 @@ struct OrbView: View {
         moduleHost.modules.filter { moduleHost.isEnabled($0.id) }
     }
 
+    private var enabledBundledModules: [OrbModule] {
+        enabledModules.filter { $0.source == .bundled }
+    }
+
+    private var enabledUserModules: [OrbModule] {
+        enabledModules.filter { $0.source == .user }
+    }
+
     private var filteredModuleItems: [OrbModule] {
         let query = modulesSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return moduleHost.modules }
@@ -492,7 +514,8 @@ struct OrbView: View {
         }
 
         do {
-            _ = try moduleHost.installModule(from: moduleURL)
+            let installedModule = try moduleHost.installModule(from: moduleURL)
+            showToast("「\(installedModule.name)」模块已安装")
         } catch {
             NSSound.beep()
             NSLog("[Orb] Failed to install module: \(error)")
@@ -502,6 +525,7 @@ struct OrbView: View {
     private func uninstallModule(_ module: OrbModule) {
         if moduleHost.uninstall(moduleID: module.id) {
             moveSelectionToModulesIfDisabled(module.id, isEnabled: false)
+            showToast("「\(module.name)」模块已卸载")
         } else {
             NSSound.beep()
         }
@@ -679,6 +703,12 @@ struct OrbView: View {
 
     private func boolValue(_ value: String) -> Bool {
         !["false", "0", "no", "off"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation(OrbUI.Toast.showAnimation) {
+            toast = AppToast(message: message)
+        }
     }
 
     private var inputCorrectionModelSourcePicker: some View {
