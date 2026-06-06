@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orb"
+  short_description: "Build Orb modules and work on the Orb app."
+  default_prompt: "Create or modify an Orb .orbmodule package, or work on Orb module-system code."

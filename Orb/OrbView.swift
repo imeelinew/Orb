@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import PermissionFlow
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct OrbView: View {
     @StateObject private var moduleHost = OrbModuleHost.shared
@@ -26,7 +25,6 @@ struct OrbView: View {
     @State private var menuBarSearchText = ""
     @State private var inputCorrectionSearchText = ""
     @State private var externalModuleSettings: [String: String] = [:]
-    @State private var externalModuleStatuses: [String: String] = [:]
     private let sidebarIconTileSize: Double = 22
     private let sidebarIconSymbolSize: Double = 11
     private let sidebarIconCornerRadius: Double = 6
@@ -282,18 +280,12 @@ struct OrbView: View {
             }
         case .module(let moduleID) where moduleID == OrbModuleID.contextMenu:
             Form {
-                Section("总开关") {
-                    Toggle("启用右键菜单", isOn: $contextMenuEnabled)
-                }
-
-                if contextMenuEnabled {
-                    Section("右键显示选项") {
-                        ForEach(filteredActions) { action in
-                            Toggle(isOn: binding(for: action)) {
-                                HStack(spacing: 10) {
-                                    MenuActionIcon(actionID: action.id, size: 24)
-                                    Text(action.title)
-                                }
+                Section("右键显示选项") {
+                    ForEach(filteredActions) { action in
+                        Toggle(isOn: binding(for: action)) {
+                            HStack(spacing: 10) {
+                                MenuActionIcon(actionID: action.id, size: 24)
+                                Text(action.title)
                             }
                         }
                     }
@@ -301,24 +293,18 @@ struct OrbView: View {
             }
         case .module(let moduleID) where moduleID == OrbModuleID.windowOperations:
             Form {
-                Section("总开关") {
-                    Toggle("启用窗口操作", isOn: $windowOperationsEnabled)
-                }
-
-                if windowOperationsEnabled {
-                    Section("窗口操作") {
-                        ForEach(filteredWindowOperations) { operation in
-                            Toggle(isOn: binding(for: operation)) {
-                                HStack(spacing: 10) {
-                                    WindowOperationIcon(operation: operation, size: 24)
-                                    Text(operation.title)
-                                }
+                Section("窗口操作") {
+                    ForEach(filteredWindowOperations) { operation in
+                        Toggle(isOn: binding(for: operation)) {
+                            HStack(spacing: 10) {
+                                WindowOperationIcon(operation: operation, size: 24)
+                                Text(operation.title)
                             }
                         }
                     }
                 }
 
-                if windowOperationsEnabled && !enabledWindowOperationIDs.isEmpty {
+                if !enabledWindowOperationIDs.isEmpty {
                     Section("权限") {
                         AccessibilityPermissionRow()
                     }
@@ -326,16 +312,12 @@ struct OrbView: View {
             }
         case .module(let moduleID) where moduleID == OrbModuleID.menuBar:
             Form {
-                Section("总开关") {
+                Section("菜单栏选项") {
                     Toggle("显示实时网速", isOn: $showsNetworkSpeed)
                 }
             }
         case .module(let moduleID) where moduleID == OrbModuleID.inputCorrection:
             Form {
-                Section("总开关") {
-                    Toggle("启用输入框纠错", isOn: $inputCorrectionEnabled)
-                }
-
                 Section("模型配置") {
                     LabeledContent {
                         inputCorrectionModelSourcePicker
@@ -394,10 +376,8 @@ struct OrbView: View {
                     }
                 }
 
-                if inputCorrectionEnabled {
-                    Section("权限") {
-                        AccessibilityPermissionRow()
-                    }
+                Section("权限") {
+                    AccessibilityPermissionRow()
                 }
             }
         case .module(let moduleID):
@@ -499,13 +479,12 @@ struct OrbView: View {
 
     private func installModuleFromPanel() {
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
+        let delegate = OrbModuleOpenPanelDelegate()
+        panel.delegate = delegate
+        panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
         panel.treatsFilePackagesAsDirectories = false
-        panel.allowedContentTypes = [
-            UTType(filenameExtension: OrbModuleLoader.packageExtension) ?? .package
-        ]
 
         guard panel.runModal() == .OK,
               let moduleURL = panel.url else {
@@ -580,22 +559,6 @@ struct OrbView: View {
     private func externalModuleDetail(moduleID: String) -> some View {
         if let module = moduleHost.module(withID: moduleID) {
             Form {
-                Section("模块") {
-                    Toggle(isOn: moduleBinding(for: module.id)) {
-                        HStack(spacing: 12) {
-                            ModuleIconTile(icon: module.icon)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(module.name)
-                                Text(module.desc)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(minHeight: 48)
-                    }
-                    .padding(.horizontal, 10)
-                }
-
                 if !module.descriptor.capabilities.isEmpty {
                     Section("操作") {
                         ForEach(module.descriptor.capabilities) { capability in
@@ -618,48 +581,39 @@ struct OrbView: View {
                     }
                 }
 
-                if module.descriptor.runtime.kind == .executable {
-                    Section("状态") {
-                        HStack {
-                            Text(externalModuleStatuses[module.id] ?? "")
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                            Button("刷新") {
-                                refreshExternalModuleStatus(module)
-                            }
-                        }
-                    }
-                }
-
                 if !module.descriptor.settings.isEmpty {
-                    Section("设置") {
+                    Section(externalModuleSettingsSectionTitle(module.descriptor.settings)) {
                         ForEach(module.descriptor.settings) { setting in
-                            TextField(setting.title, text: externalModuleSettingBinding(moduleID: module.id, setting: setting))
-                                .onSubmit {
+                            externalModuleSettingRow(moduleID: module.id, setting: setting)
+                        }
+
+                        if module.descriptor.settings.contains(where: { !isToggleSetting($0) }) {
+                            Button("保存设置") {
+                                for setting in module.descriptor.settings {
                                     saveExternalModuleSetting(moduleID: module.id, setting: setting)
                                 }
-                        }
-
-                        Button("保存设置") {
-                            for setting in module.descriptor.settings {
-                                saveExternalModuleSetting(moduleID: module.id, setting: setting)
                             }
                         }
                     }
-                }
-
-                Section("位置") {
-                    Text(module.packageURL.path)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
             .task(id: module.id) {
-                refreshExternalModuleStatus(module)
                 loadExternalModuleSettings(module)
             }
         } else {
             ContentUnavailableView("模块不存在", systemImage: "puzzlepiece.extension")
+        }
+    }
+
+    @ViewBuilder
+    private func externalModuleSettingRow(moduleID: String, setting: OrbModuleSetting) -> some View {
+        if isToggleSetting(setting) {
+            Toggle(setting.title, isOn: externalModuleToggleSettingBinding(moduleID: moduleID, setting: setting))
+        } else {
+            TextField(setting.title, text: externalModuleSettingBinding(moduleID: moduleID, setting: setting))
+                .onSubmit {
+                    saveExternalModuleSetting(moduleID: moduleID, setting: setting)
+                }
         }
     }
 
@@ -675,9 +629,17 @@ struct OrbView: View {
         )
     }
 
-    private func refreshExternalModuleStatus(_ module: OrbModule) {
-        guard module.descriptor.runtime.kind == .executable else { return }
-        externalModuleStatuses[module.id] = moduleHost.status(moduleID: module.id) ?? ""
+    private func externalModuleToggleSettingBinding(moduleID: String, setting: OrbModuleSetting) -> Binding<Bool> {
+        let key = externalModuleSettingStateKey(moduleID: moduleID, settingKey: setting.key)
+        return Binding(
+            get: {
+                boolValue(externalModuleSettings[key] ?? setting.defaultValue ?? "true")
+            },
+            set: { newValue in
+                externalModuleSettings[key] = newValue ? "true" : "false"
+                saveExternalModuleSetting(moduleID: moduleID, setting: setting)
+            }
+        )
     }
 
     private func loadExternalModuleSettings(_ module: OrbModule) {
@@ -701,6 +663,22 @@ struct OrbView: View {
 
     private func externalModuleSettingStateKey(moduleID: String, settingKey: String) -> String {
         "\(moduleID).\(settingKey)"
+    }
+
+    private func externalModuleSettingsSectionTitle(_ settings: [OrbModuleSetting]) -> String {
+        settings.allSatisfy(isCommandSetting) ? "命令" : "设置"
+    }
+
+    private func isCommandSetting(_ setting: OrbModuleSetting) -> Bool {
+        setting.type.localizedCaseInsensitiveCompare("command") == .orderedSame
+    }
+
+    private func isToggleSetting(_ setting: OrbModuleSetting) -> Bool {
+        ["bool", "boolean", "toggle", "command"].contains(setting.type.lowercased())
+    }
+
+    private func boolValue(_ value: String) -> Bool {
+        !["false", "0", "no", "off"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
     private var inputCorrectionModelSourcePicker: some View {
@@ -750,6 +728,44 @@ struct OrbView: View {
                 }
             }
         }
+    }
+}
+
+private final class OrbModuleOpenPanelDelegate: NSObject, NSOpenSavePanelDelegate {
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+        OrbModuleOpenPanelSelection.shouldEnable(url)
+    }
+
+    func panel(_ sender: Any, validate url: URL) throws {
+        try OrbModuleOpenPanelSelection.validate(url)
+    }
+}
+
+enum OrbModuleOpenPanelSelection {
+    static func shouldEnable(_ url: URL) -> Bool {
+        if url.pathExtension == OrbModuleLoader.packageExtension {
+            return true
+        }
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return false
+        }
+        return isDirectory.boolValue
+    }
+
+    static func validate(_ url: URL) throws {
+        guard url.pathExtension == OrbModuleLoader.packageExtension else {
+            throw OrbModuleOpenPanelError.invalidSelection
+        }
+    }
+}
+
+enum OrbModuleOpenPanelError: LocalizedError {
+    case invalidSelection
+
+    var errorDescription: String? {
+        "请选择 .orbmodule 模块。"
     }
 }
 

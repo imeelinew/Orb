@@ -16,8 +16,10 @@ struct OrbModuleTests {
     }
 
     @Test func exampleExecutableModuleDeclaresRunnableEntry() throws {
-        let moduleURL = try repositoryRoot()
-            .appendingPathComponent("Examples/OpenVSCode.orbmodule", isDirectory: true)
+        let moduleURL = try makeTemporaryExecutableModule()
+        defer {
+            try? FileManager.default.removeItem(at: moduleURL.deletingLastPathComponent())
+        }
         let module = try #require(OrbModuleLoader.loadModule(at: moduleURL, source: .user))
 
         #expect(module.descriptor.runtime.kind == .executable)
@@ -28,11 +30,11 @@ struct OrbModuleTests {
     }
 
     @Test func exampleExecutableModuleSupportsStatusAndSettingsProtocol() throws {
-        let moduleURL = try repositoryRoot()
-            .appendingPathComponent("Examples/OpenVSCode.orbmodule", isDirectory: true)
+        let moduleURL = try makeTemporaryExecutableModule()
         let executableURL = moduleURL.appendingPathComponent("bin/main")
         let defaultsDomain = "com.eli.orb.test.open-vscode-module"
         defer {
+            try? FileManager.default.removeItem(at: moduleURL.deletingLastPathComponent())
             _ = try? run("/usr/bin/defaults", arguments: ["delete", defaultsDomain])
         }
 
@@ -60,11 +62,11 @@ struct OrbModuleTests {
     }
 
     @Test func installerCopiesModulePackageIntoInstallDirectory() throws {
-        let sourceURL = try repositoryRoot()
-            .appendingPathComponent("Examples/OpenVSCode.orbmodule", isDirectory: true)
+        let sourceURL = try makeTemporaryExecutableModule()
         let installDirectoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
+            try? FileManager.default.removeItem(at: sourceURL.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: installDirectoryURL)
         }
 
@@ -85,12 +87,12 @@ struct OrbModuleTests {
     }
 
     @Test func installerRejectsModulesThatDuplicateBundledIDs() throws {
-        let sourceURL = try repositoryRoot()
-            .appendingPathComponent("Examples/OpenVSCode.orbmodule", isDirectory: true)
+        let sourceURL = try makeTemporaryExecutableModule()
         let installDirectoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let bundledModule = try #require(OrbModuleLoader.loadModule(at: sourceURL, source: .bundled))
         defer {
+            try? FileManager.default.removeItem(at: sourceURL.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: installDirectoryURL)
         }
 
@@ -106,6 +108,38 @@ struct OrbModuleTests {
         }
     }
 
+    @Test func openPanelSelectionAllowsOrbModulePackages() throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let moduleURL = rootURL.appendingPathComponent("CommandLine.orbmodule", isDirectory: true)
+        let plainDirectoryURL = rootURL.appendingPathComponent("PlainDirectory", isDirectory: true)
+        let plainFileURL = rootURL.appendingPathComponent("notes.txt")
+        defer {
+            try? FileManager.default.removeItem(at: rootURL)
+        }
+
+        try FileManager.default.createDirectory(at: moduleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: plainDirectoryURL, withIntermediateDirectories: true)
+        try "notes".write(to: plainFileURL, atomically: true, encoding: .utf8)
+
+        #expect(OrbModuleOpenPanelSelection.shouldEnable(moduleURL))
+        #expect(OrbModuleOpenPanelSelection.shouldEnable(plainDirectoryURL))
+        #expect(!OrbModuleOpenPanelSelection.shouldEnable(plainFileURL))
+        do {
+            try OrbModuleOpenPanelSelection.validate(moduleURL)
+        } catch {
+            Issue.record("Expected .orbmodule selection to validate")
+        }
+
+        do {
+            try OrbModuleOpenPanelSelection.validate(plainDirectoryURL)
+            Issue.record("Expected plain directory selection to be rejected")
+        } catch OrbModuleOpenPanelError.invalidSelection {
+        } catch {
+            Issue.record("Expected invalid selection error")
+        }
+    }
+
     private func repositoryRoot() throws -> URL {
         var url = URL(fileURLWithPath: #filePath)
         while url.path != "/" {
@@ -115,6 +149,94 @@ struct OrbModuleTests {
             url.deleteLastPathComponent()
         }
         throw CocoaError(.fileNoSuchFile)
+    }
+
+    private func makeTemporaryExecutableModule(
+        id: String = "com.eli.orb.test.executable-module"
+    ) throws -> URL {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let moduleURL = rootURL.appendingPathComponent("TestExecutable.orbmodule", isDirectory: true)
+        let binURL = moduleURL.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binURL, withIntermediateDirectories: true)
+
+        let manifest = """
+        {
+          "manifestVersion": 1,
+          "id": "\(id)",
+          "name": "Test Executable",
+          "desc": "Test executable module.",
+          "version": "1.0.0",
+          "displayOrder": 1000,
+          "icon": {
+            "symbol": "terminal.fill",
+            "gradient": ["#4AA3FF", "#1D5CFF"]
+          },
+          "runtime": {
+            "kind": "executable",
+            "adapter": null,
+            "executable": "bin/main"
+          },
+          "defaultEnabled": false,
+          "permissions": ["automation"],
+          "capabilities": [],
+          "settings": [
+            {
+              "key": "appName",
+              "title": "App Name",
+              "type": "string",
+              "defaultValue": "Visual Studio Code"
+            }
+          ]
+        }
+        """
+        try manifest.write(
+            to: moduleURL.appendingPathComponent("module.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let script = """
+        #!/bin/sh
+        set -eu
+
+        case "${1:-status}" in
+          status)
+            echo "ready"
+            ;;
+          settings)
+            case "${2:-}" in
+              get)
+                key="${3:-}"
+                [ -n "$key" ] || exit 2
+                defaults read "${ORB_MODULE_ID:-\(id)}" "$key" 2>/dev/null || true
+                ;;
+              set)
+                key="${3:-}"
+                value="${4:-}"
+                [ -n "$key" ] || exit 2
+                defaults write "${ORB_MODULE_ID:-\(id)}" "$key" "$value"
+                ;;
+              *)
+                exit 2
+                ;;
+            esac
+            ;;
+          start|stop)
+            exit 0
+            ;;
+          *)
+            exit 2
+            ;;
+        esac
+        """
+        let executableURL = binURL.appendingPathComponent("main")
+        try script.write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: executableURL.path
+        )
+        return moduleURL
     }
 
     @discardableResult
