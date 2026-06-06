@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.eli.orb.window-operations",
+  "name": "窗口操作",
+  "desc": "使用快捷键对窗口进行快速操作。",
+  "version": "1.0.0",
+  "displayOrder": 20,
+  "icon": {
+    "symbol": "rectangle.on.rectangle",
+    "gradient": ["#7AC2FF", "#2E7AFF"]
+  },
+  "runtime": {
+    "kind": "native",
+    "adapter": "windowOperations",
+    "executable": null
+  },
+  "defaultEnabled": true,
+  "permissions": ["accessibility"],
+  "capabilities": [],
+  "settings": []
+}

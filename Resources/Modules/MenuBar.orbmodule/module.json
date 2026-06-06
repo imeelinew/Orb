@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.eli.orb.menu-bar",
+  "name": "菜单栏",
+  "desc": "自定义 Orb 的菜单栏选项。",
+  "version": "1.0.0",
+  "displayOrder": 30,
+  "icon": {
+    "symbol": "menubar.rectangle",
+    "gradient": ["#61EBBD", "#0FC296"]
+  },
+  "runtime": {
+    "kind": "native",
+    "adapter": "menuBar",
+    "executable": null
+  },
+  "defaultEnabled": true,
+  "permissions": [],
+  "capabilities": [],
+  "settings": []
+}

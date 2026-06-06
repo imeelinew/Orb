@@ -4,6 +4,7 @@ import PermissionFlow
 import SwiftUI
 
 struct OrbView: View {
+    @StateObject private var moduleHost = OrbModuleHost.shared
     @State private var selection: SettingsPage? = .modules
     @State private var contextMenuEnabled = MenuActionConfiguration.isEnabled()
     @State private var enabledActionIDs = MenuActionConfiguration.enabledIDs()
@@ -23,115 +24,66 @@ struct OrbView: View {
     @State private var windowOperationsSearchText = ""
     @State private var menuBarSearchText = ""
     @State private var inputCorrectionSearchText = ""
+    @State private var externalModuleSettings: [String: String] = [:]
+    @State private var externalModuleStatuses: [String: String] = [:]
     private let sidebarIconTileSize: Double = 22
     private let sidebarIconSymbolSize: Double = 11
     private let sidebarIconCornerRadius: Double = 6
 
-    enum SettingsPage: String, CaseIterable, Hashable, Identifiable {
+    enum SettingsPage: Hashable, Identifiable {
         case modules
-        case contextMenu
-        case windowOperations
-        case menuBar
-        case inputCorrection
+        case module(String)
 
-        var id: String { rawValue }
-        var title: String {
+        var id: String {
             switch self {
             case .modules:
-                return "模块"
-            case .contextMenu:
-                return "右键菜单"
-            case .windowOperations:
-                return "窗口操作"
-            case .menuBar:
-                return "菜单栏"
-            case .inputCorrection:
-                return "输入框"
+                return "modules"
+            case .module(let moduleID):
+                return moduleID
             }
+        }
+
+        var title: String {
+            "模块"
         }
 
         var symbolName: String {
-            switch self {
-            case .modules:
-                return "puzzlepiece.extension.fill"
-            case .contextMenu:
-                return "contextualmenu.and.cursorarrow"
-            case .windowOperations:
-                return "rectangle.on.rectangle"
-            case .menuBar:
-                return "menubar.rectangle"
-            case .inputCorrection:
-                return "text.cursor"
-            }
+            "puzzlepiece.extension.fill"
         }
 
         var iconGradient: LinearGradient {
-            switch self {
-            case .modules:
-                return LinearGradient(
-                    colors: [Color(red: 1.0, green: 0.76, blue: 0.24), Color(red: 0.95, green: 0.54, blue: 0.08)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            case .contextMenu:
-                return LinearGradient(
-                    colors: [Color(red: 1.0, green: 0.62, blue: 0.48), Color(red: 1.0, green: 0.32, blue: 0.22)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            case .windowOperations:
-                return LinearGradient(
-                    colors: [Color(red: 0.48, green: 0.76, blue: 1.0), Color(red: 0.18, green: 0.48, blue: 1.0)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            case .menuBar:
-                return LinearGradient(
-                    colors: [Color(red: 0.38, green: 0.92, blue: 0.74), Color(red: 0.06, green: 0.76, blue: 0.58)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            case .inputCorrection:
-                return LinearGradient(
-                    colors: [Color(red: 0.82, green: 0.54, blue: 1.0), Color(red: 0.42, green: 0.34, blue: 0.98)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+            LinearGradient(
+                colors: [Color(red: 1.0, green: 0.76, blue: 0.24), Color(red: 0.95, green: 0.54, blue: 0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
-    private struct ModuleItem: Identifiable, Hashable {
-        let page: SettingsPage
-        let description: String
-
-        var id: SettingsPage { page }
-        var title: String { page.title }
-    }
-
-    private static let moduleItems: [ModuleItem] = [
-        ModuleItem(page: .contextMenu, description: "在 Finder 右键中使用 Orb 添加的自定义功能。"),
-        ModuleItem(page: .windowOperations, description: "使用快捷键对窗口进行快速操作。"),
-        ModuleItem(page: .menuBar, description: "自定义 Orb 的菜单栏选项。"),
-        ModuleItem(page: .inputCorrection, description: "接入大模型对输入文本实时纠错。")
-    ]
-
     private var selectedPage: SettingsPage {
         selection ?? .modules
+    }
+
+    private var selectedModuleID: String? {
+        guard case .module(let moduleID) = selectedPage else { return nil }
+        return moduleID
+    }
+
+    private var selectedTitle: String {
+        switch selectedPage {
+        case .modules:
+            return "模块"
+        case .module(let moduleID):
+            return moduleHost.module(withID: moduleID)?.name ?? "模块"
+        }
     }
 
     private var searchPrompt: String {
         switch selectedPage {
         case .modules:
             return "搜索模块"
-        case .contextMenu:
-            return "搜索右键菜单"
-        case .windowOperations:
-            return "搜索窗口操作"
-        case .menuBar:
-            return "搜索菜单栏"
-        case .inputCorrection:
-            return "搜索输入框"
+        case .module(let moduleID):
+            return "搜索\(moduleHost.module(withID: moduleID)?.name ?? "模块")"
         }
     }
 
@@ -141,28 +93,32 @@ struct OrbView: View {
                 switch selectedPage {
                 case .modules:
                     return modulesSearchText
-                case .contextMenu:
+                case .module(let moduleID) where moduleID == OrbModuleID.contextMenu:
                     return contextMenuSearchText
-                case .windowOperations:
+                case .module(let moduleID) where moduleID == OrbModuleID.windowOperations:
                     return windowOperationsSearchText
-                case .menuBar:
+                case .module(let moduleID) where moduleID == OrbModuleID.menuBar:
                     return menuBarSearchText
-                case .inputCorrection:
+                case .module(let moduleID) where moduleID == OrbModuleID.inputCorrection:
                     return inputCorrectionSearchText
+                case .module:
+                    return modulesSearchText
                 }
             },
             set: { newValue in
                 switch selectedPage {
                 case .modules:
                     modulesSearchText = newValue
-                case .contextMenu:
+                case .module(let moduleID) where moduleID == OrbModuleID.contextMenu:
                     contextMenuSearchText = newValue
-                case .windowOperations:
+                case .module(let moduleID) where moduleID == OrbModuleID.windowOperations:
                     windowOperationsSearchText = newValue
-                case .menuBar:
+                case .module(let moduleID) where moduleID == OrbModuleID.menuBar:
                     menuBarSearchText = newValue
-                case .inputCorrection:
+                case .module(let moduleID) where moduleID == OrbModuleID.inputCorrection:
                     inputCorrectionSearchText = newValue
+                case .module:
+                    modulesSearchText = newValue
                 }
             }
         )
@@ -195,9 +151,9 @@ struct OrbView: View {
                 }
 
                 Section("模块") {
-                    ForEach(enabledModuleItems) { module in
-                        NavigationLink(value: module.page) {
-                            SidebarPageLabel(page: module.page)
+                    ForEach(enabledModules) { module in
+                        NavigationLink(value: SettingsPage.module(module.id)) {
+                            SidebarModuleLabel(module: module)
                         }
                     }
                 }
@@ -210,7 +166,7 @@ struct OrbView: View {
                 .formStyle(.grouped)
                 .settingsContentMargins()
                 .scrollContentBackground(.hidden)
-                .navigationTitle(selectedPage.title)
+                .navigationTitle(selectedTitle)
             }
         }
         .environment(\.sidebarIconTileSize, sidebarIconTileSize)
@@ -237,35 +193,44 @@ struct OrbView: View {
                 .ignoresSafeArea()
         }
         .onAppear {
+            moduleHost.reloadModules()
+            syncEnabledStateFromModuleHost()
             persistEnabledActions()
             persistEnabledWindowOperations()
             persistMenuBarModuleEnabled()
             persistMenuBarConfiguration()
         }
         .onChange(of: contextMenuEnabled) { _, _ in
+            moduleHost.setEnabled(contextMenuEnabled, for: OrbModuleID.contextMenu)
             persistEnabledActions()
-            moveSelectionToModulesIfDisabled(.contextMenu, isEnabled: contextMenuEnabled)
+            moveSelectionToModulesIfDisabled(OrbModuleID.contextMenu, isEnabled: contextMenuEnabled)
         }
         .onChange(of: enabledActionIDs) { _, _ in
             persistEnabledActions()
         }
         .onChange(of: windowOperationsEnabled) { _, _ in
+            moduleHost.setEnabled(windowOperationsEnabled, for: OrbModuleID.windowOperations)
             persistEnabledWindowOperations()
-            moveSelectionToModulesIfDisabled(.windowOperations, isEnabled: windowOperationsEnabled)
+            moveSelectionToModulesIfDisabled(OrbModuleID.windowOperations, isEnabled: windowOperationsEnabled)
         }
         .onChange(of: enabledWindowOperationIDs) { _, _ in
             persistEnabledWindowOperations()
         }
         .onChange(of: menuBarModuleEnabled) { _, _ in
+            moduleHost.setEnabled(menuBarModuleEnabled, for: OrbModuleID.menuBar)
             persistMenuBarModuleEnabled()
-            moveSelectionToModulesIfDisabled(.menuBar, isEnabled: menuBarModuleEnabled)
+            moveSelectionToModulesIfDisabled(OrbModuleID.menuBar, isEnabled: menuBarModuleEnabled)
         }
         .onChange(of: showsNetworkSpeed) { _, _ in
             persistMenuBarConfiguration()
         }
         .onChange(of: inputCorrectionEnabled) { _, _ in
+            moduleHost.setEnabled(inputCorrectionEnabled, for: OrbModuleID.inputCorrection)
             persistInputCorrectionEnabled()
-            moveSelectionToModulesIfDisabled(.inputCorrection, isEnabled: inputCorrectionEnabled)
+            moveSelectionToModulesIfDisabled(OrbModuleID.inputCorrection, isEnabled: inputCorrectionEnabled)
+        }
+        .onReceive(moduleHost.$enabledModuleIDs) { _ in
+            syncEnabledStateFromModuleHost()
         }
     }
 
@@ -276,12 +241,12 @@ struct OrbView: View {
             Form {
                 Section {
                     ForEach(filteredModuleItems) { module in
-                        Toggle(isOn: moduleBinding(for: module.page)) {
+                        Toggle(isOn: moduleBinding(for: module.id)) {
                             HStack(spacing: 12) {
-                                SidebarCategoryIcon(page: module.page)
+                                ModuleIconTile(icon: module.icon)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(module.title)
-                                    Text(module.description)
+                                    Text(module.name)
+                                    Text(module.desc)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -292,7 +257,7 @@ struct OrbView: View {
                     }
                 }
             }
-        case .contextMenu:
+        case .module(let moduleID) where moduleID == OrbModuleID.contextMenu:
             Form {
                 Section("总开关") {
                     Toggle("启用右键菜单", isOn: $contextMenuEnabled)
@@ -311,7 +276,7 @@ struct OrbView: View {
                     }
                 }
             }
-        case .windowOperations:
+        case .module(let moduleID) where moduleID == OrbModuleID.windowOperations:
             Form {
                 Section("总开关") {
                     Toggle("启用窗口操作", isOn: $windowOperationsEnabled)
@@ -336,13 +301,13 @@ struct OrbView: View {
                     }
                 }
             }
-        case .menuBar:
+        case .module(let moduleID) where moduleID == OrbModuleID.menuBar:
             Form {
                 Section("总开关") {
                     Toggle("显示实时网速", isOn: $showsNetworkSpeed)
                 }
             }
-        case .inputCorrection:
+        case .module(let moduleID) where moduleID == OrbModuleID.inputCorrection:
             Form {
                 Section("总开关") {
                     Toggle("启用输入框纠错", isOn: $inputCorrectionEnabled)
@@ -412,6 +377,8 @@ struct OrbView: View {
                     }
                 }
             }
+        case .module(let moduleID):
+            externalModuleDetail(moduleID: moduleID)
         }
     }
 
@@ -423,15 +390,17 @@ struct OrbView: View {
         }
     }
 
-    private var enabledModuleItems: [ModuleItem] {
-        Self.moduleItems.filter { isModuleEnabled($0.page) }
+    private var enabledModules: [OrbModule] {
+        moduleHost.modules.filter { moduleHost.isEnabled($0.id) }
     }
 
-    private var filteredModuleItems: [ModuleItem] {
+    private var filteredModuleItems: [OrbModule] {
         let query = modulesSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return Self.moduleItems }
-        return Self.moduleItems.filter { module in
-            module.title.localizedStandardContains(query)
+        guard !query.isEmpty else { return moduleHost.modules }
+        return moduleHost.modules.filter { module in
+            module.name.localizedStandardContains(query)
+                || module.desc.localizedStandardContains(query)
+                || module.id.localizedStandardContains(query)
         }
     }
 
@@ -456,42 +425,28 @@ struct OrbView: View {
         )
     }
 
-    private func moduleBinding(for page: SettingsPage) -> Binding<Bool> {
+    private func moduleBinding(for moduleID: String) -> Binding<Bool> {
         Binding(
-            get: { isModuleEnabled(page) },
+            get: { moduleHost.isEnabled(moduleID) },
             set: { isEnabled in
-                setModule(page, isEnabled: isEnabled)
+                setModule(moduleID, isEnabled: isEnabled)
             }
         )
     }
 
-    private func isModuleEnabled(_ page: SettingsPage) -> Bool {
-        switch page {
-        case .modules:
-            return true
-        case .contextMenu:
-            return contextMenuEnabled
-        case .windowOperations:
-            return windowOperationsEnabled
-        case .menuBar:
-            return menuBarModuleEnabled
-        case .inputCorrection:
-            return inputCorrectionEnabled
-        }
-    }
-
-    private func setModule(_ page: SettingsPage, isEnabled: Bool) {
-        switch page {
-        case .modules:
-            return
-        case .contextMenu:
+    private func setModule(_ moduleID: String, isEnabled: Bool) {
+        switch moduleID {
+        case OrbModuleID.contextMenu:
             contextMenuEnabled = isEnabled
-        case .windowOperations:
+        case OrbModuleID.windowOperations:
             windowOperationsEnabled = isEnabled
-        case .menuBar:
+        case OrbModuleID.menuBar:
             menuBarModuleEnabled = isEnabled
-        case .inputCorrection:
+        case OrbModuleID.inputCorrection:
             inputCorrectionEnabled = isEnabled
+        default:
+            moduleHost.setEnabled(isEnabled, for: moduleID)
+            moveSelectionToModulesIfDisabled(moduleID, isEnabled: isEnabled)
         }
     }
 
@@ -531,9 +486,143 @@ struct OrbView: View {
         InputCorrectionConfiguration.setEnabled(inputCorrectionEnabled)
     }
 
-    private func moveSelectionToModulesIfDisabled(_ page: SettingsPage, isEnabled: Bool) {
-        guard !isEnabled, selectedPage == page else { return }
+    private func moveSelectionToModulesIfDisabled(_ moduleID: String, isEnabled: Bool) {
+        guard !isEnabled, selectedModuleID == moduleID else { return }
         selection = .modules
+    }
+
+    private func syncEnabledStateFromModuleHost() {
+        contextMenuEnabled = moduleHost.isEnabled(OrbModuleID.contextMenu)
+        windowOperationsEnabled = moduleHost.isEnabled(OrbModuleID.windowOperations)
+        menuBarModuleEnabled = moduleHost.isEnabled(OrbModuleID.menuBar)
+        inputCorrectionEnabled = moduleHost.isEnabled(OrbModuleID.inputCorrection)
+    }
+
+    @ViewBuilder
+    private func externalModuleDetail(moduleID: String) -> some View {
+        if let module = moduleHost.module(withID: moduleID) {
+            Form {
+                Section("模块") {
+                    Toggle(isOn: moduleBinding(for: module.id)) {
+                        HStack(spacing: 12) {
+                            ModuleIconTile(icon: module.icon)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(module.name)
+                                Text(module.desc)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(minHeight: 48)
+                    }
+                    .padding(.horizontal, 10)
+                }
+
+                if !module.descriptor.capabilities.isEmpty {
+                    Section("操作") {
+                        ForEach(module.descriptor.capabilities) { capability in
+                            Button {
+                                if let command = capability.command {
+                                    _ = moduleHost.runAction(moduleID: module.id, command: command)
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(capability.name)
+                                    if let desc = capability.desc {
+                                        Text(desc)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .disabled(!moduleHost.isEnabled(module.id) || capability.command == nil)
+                        }
+                    }
+                }
+
+                if module.descriptor.runtime.kind == .executable {
+                    Section("状态") {
+                        HStack {
+                            Text(externalModuleStatuses[module.id] ?? "")
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                            Button("刷新") {
+                                refreshExternalModuleStatus(module)
+                            }
+                        }
+                    }
+                }
+
+                if !module.descriptor.settings.isEmpty {
+                    Section("设置") {
+                        ForEach(module.descriptor.settings) { setting in
+                            TextField(setting.title, text: externalModuleSettingBinding(moduleID: module.id, setting: setting))
+                                .onSubmit {
+                                    saveExternalModuleSetting(moduleID: module.id, setting: setting)
+                                }
+                        }
+
+                        Button("保存设置") {
+                            for setting in module.descriptor.settings {
+                                saveExternalModuleSetting(moduleID: module.id, setting: setting)
+                            }
+                        }
+                    }
+                }
+
+                Section("位置") {
+                    Text(module.packageURL.path)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .task(id: module.id) {
+                refreshExternalModuleStatus(module)
+                loadExternalModuleSettings(module)
+            }
+        } else {
+            ContentUnavailableView("模块不存在", systemImage: "puzzlepiece.extension")
+        }
+    }
+
+    private func externalModuleSettingBinding(moduleID: String, setting: OrbModuleSetting) -> Binding<String> {
+        let key = externalModuleSettingStateKey(moduleID: moduleID, settingKey: setting.key)
+        return Binding(
+            get: {
+                externalModuleSettings[key] ?? setting.defaultValue ?? ""
+            },
+            set: { newValue in
+                externalModuleSettings[key] = newValue
+            }
+        )
+    }
+
+    private func refreshExternalModuleStatus(_ module: OrbModule) {
+        guard module.descriptor.runtime.kind == .executable else { return }
+        externalModuleStatuses[module.id] = moduleHost.status(moduleID: module.id) ?? ""
+    }
+
+    private func loadExternalModuleSettings(_ module: OrbModule) {
+        guard module.descriptor.runtime.kind == .executable else { return }
+        for setting in module.descriptor.settings {
+            let key = externalModuleSettingStateKey(moduleID: module.id, settingKey: setting.key)
+            externalModuleSettings[key] = moduleHost.settingValue(moduleID: module.id, key: setting.key)
+                ?? setting.defaultValue
+                ?? ""
+        }
+    }
+
+    private func saveExternalModuleSetting(moduleID: String, setting: OrbModuleSetting) {
+        let key = externalModuleSettingStateKey(moduleID: moduleID, settingKey: setting.key)
+        _ = moduleHost.setSettingValue(
+            moduleID: moduleID,
+            key: setting.key,
+            value: externalModuleSettings[key] ?? setting.defaultValue ?? ""
+        )
+    }
+
+    private func externalModuleSettingStateKey(moduleID: String, settingKey: String) -> String {
+        "\(moduleID).\(settingKey)"
     }
 
     private var inputCorrectionModelSourcePicker: some View {
@@ -834,7 +923,18 @@ private struct SidebarPageLabel: View {
     var body: some View {
         HStack(spacing: 12) {
             SidebarCategoryIcon(page: page)
-            Text(page.title)
+            Text("模块")
+        }
+    }
+}
+
+private struct SidebarModuleLabel: View {
+    let module: OrbModule
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ModuleIconTile(icon: module.icon)
+            Text(module.name)
         }
     }
 }
@@ -856,6 +956,60 @@ private struct SidebarCategoryIcon: View {
                 .foregroundStyle(.white)
         }
         .frame(width: tileSize, height: tileSize)
+    }
+}
+
+private struct ModuleIconTile: View {
+    let icon: OrbModuleIcon
+    @Environment(\.sidebarIconTileSize) private var tileSize
+    @Environment(\.sidebarIconSymbolSize) private var symbolSize
+    @Environment(\.sidebarIconCornerRadius) private var cornerRadius
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(iconGradient)
+
+            Image(systemName: icon.symbol)
+                .font(.system(size: symbolSize, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.white)
+        }
+        .frame(width: tileSize, height: tileSize)
+    }
+
+    private var iconGradient: LinearGradient {
+        LinearGradient(
+            colors: gradientColors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var gradientColors: [Color] {
+        let colors = icon.gradient.compactMap(Color.init(hex:))
+        guard colors.count >= 2 else {
+            return [
+                Color(red: 0.48, green: 0.58, blue: 0.70),
+                Color(red: 0.25, green: 0.34, blue: 0.48)
+            ]
+        }
+        return colors
+    }
+}
+
+private extension Color {
+    init?(hex: String) {
+        let normalized = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard normalized.count == 6,
+              let value = UInt64(normalized, radix: 16) else {
+            return nil
+        }
+
+        let red = Double((value & 0xFF0000) >> 16) / 255
+        let green = Double((value & 0x00FF00) >> 8) / 255
+        let blue = Double(value & 0x0000FF) / 255
+        self.init(red: red, green: green, blue: blue)
     }
 }
 

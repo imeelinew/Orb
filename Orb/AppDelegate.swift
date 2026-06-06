@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var eventDirectoryDescriptor: CInt = -1
     private var didDisableFinderExtensionForTermination = false
     private var defaultsObserver: NSObjectProtocol?
+    private var moduleStateObserver: NSObjectProtocol?
     private var isShowingNetworkSpeed = false
     private var currentNetworkSpeedSample = NetworkSpeedSample(uploadBytesPerSecond: 0, downloadBytesPerSecond: 0)
     private var networkSpeedContentView: NSStackView?
@@ -65,10 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installMainMenu()
         configureStatusItem()
         installApplicationScripts()
+        OrbModuleHost.shared.reloadModules()
+        OrbModuleHost.shared.startWatchingUserModules()
         syncFinderExtensionAvailability()
         syncWindowOperationManager()
         inputCorrectionManager.refresh()
+        OrbModuleHost.shared.startEnabledExecutableModules()
         observeDefaultsChanges()
+        observeModuleStateChanges()
         startPopoverEventWatcher()
         showMainWindow()
     }
@@ -77,6 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let defaultsObserver {
             NotificationCenter.default.removeObserver(defaultsObserver)
         }
+        if let moduleStateObserver {
+            NotificationCenter.default.removeObserver(moduleStateObserver)
+        }
+        OrbModuleHost.shared.stopEnabledExecutableModules()
         networkSpeedMonitor.stop()
         inputCorrectionManager.stop()
         windowOperationManager.stop()
@@ -373,6 +382,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.statusItem.menu = nil
+                OrbModuleHost.shared.refreshEnabledStates()
+                self?.syncFinderExtensionAvailability()
+                self?.syncWindowOperationManager()
+                self?.refreshStatusItemConfiguration()
+                self?.inputCorrectionManager.refresh()
+            }
+        }
+    }
+
+    private func observeModuleStateChanges() {
+        moduleStateObserver = NotificationCenter.default.addObserver(
+            forName: OrbModuleHost.moduleStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.statusItem.menu = nil
                 self?.syncFinderExtensionAvailability()
                 self?.syncWindowOperationManager()
                 self?.refreshStatusItemConfiguration()
@@ -508,7 +534,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         do {
             try syncManagedDirectoryContents(from: scriptsSource, to: scriptsDestination, executable: true)
             try syncManagedDirectoryContents(from: templatesSource, to: scriptsDestination, executable: false)
-            removeLegacyMoveState()
             MenuActionConfiguration.writeEnabledIDs(MenuActionConfiguration.enabledIDs())
             NSLog("[Orb] Installed scripts to \(scriptsDestination.path)")
         } catch {
@@ -563,13 +588,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NSLog("[Orb] Failed to run \(launchPath): \(error)")
             return false
         }
-    }
-
-    private func removeLegacyMoveState() {
-        let stateDirectory = FileManager.default
-            .homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Orb", isDirectory: true)
-        try? FileManager.default.removeItem(at: stateDirectory)
     }
 
     private var scriptsDirectoryURL: URL {

@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.eli.orb.input-correction",
+  "name": "输入框",
+  "desc": "接入大模型对输入文本实时纠错。",
+  "version": "1.0.0",
+  "displayOrder": 40,
+  "icon": {
+    "symbol": "text.cursor",
+    "gradient": ["#D18AFF", "#6B57FA"]
+  },
+  "runtime": {
+    "kind": "native",
+    "adapter": "inputCorrection",
+    "executable": null
+  },
+  "defaultEnabled": false,
+  "permissions": ["accessibility", "inputMonitoring"],
+  "capabilities": [],
+  "settings": []
+}

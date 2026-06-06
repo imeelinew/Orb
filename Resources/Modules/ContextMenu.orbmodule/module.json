@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "com.eli.orb.context-menu",
+  "name": "右键菜单",
+  "desc": "在 Finder 右键中使用 Orb 添加的自定义功能。",
+  "version": "1.0.0",
+  "displayOrder": 10,
+  "icon": {
+    "symbol": "contextualmenu.and.cursorarrow",
+    "gradient": ["#FF9E7A", "#FF5238"]
+  },
+  "runtime": {
+    "kind": "native",
+    "adapter": "contextMenu",
+    "executable": null
+  },
+  "defaultEnabled": true,
+  "permissions": ["finderSync"],
+  "capabilities": [],
+  "settings": []
+}

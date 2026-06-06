@@ -14,6 +14,7 @@
 		A00000000000000000000005 /* OrbFinderSync.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* OrbFinderSync.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A00000000000000000000019 /* FinderSyncExt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001B /* FinderSyncExt.swift */; };
 		A0000000000000000000001A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000001C /* Assets.xcassets */; };
+		A00000000000000000000020 /* Modules in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* Modules */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,6 +67,7 @@
 		A0000000000000000000001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A0000000000000000000001D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A0000000000000000000001E /* OrbFinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OrbFinderSync.entitlements; sourceTree = "<group>"; };
+		A00000000000000000000021 /* Modules */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Modules; path = Resources/Modules; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -127,6 +129,7 @@
 				A00000000000000000000009 /* Orb.icon */,
 				A0000000000000000000000A /* Scripts */,
 				A0000000000000000000000B /* Templates */,
+				A00000000000000000000021 /* Modules */,
 				A00000000000000000000018 /* Packages */,
 				45A5DBAF2FCC97D000262748 /* OrbTests */,
 				45A5DBB92FCC97D000262748 /* OrbUITests */,
@@ -317,6 +320,7 @@
 				A00000000000000000000002 /* Orb.icon in Resources */,
 				A00000000000000000000003 /* Scripts in Resources */,
 				A00000000000000000000004 /* Templates in Resources */,
+				A00000000000000000000020 /* Modules in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -528,7 +532,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/Orb-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Orb;
 				INFOPLIST_KEY_CFBundleIconName = Orb;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -562,7 +567,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/Orb-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Orb;
 				INFOPLIST_KEY_CFBundleIconName = Orb;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";

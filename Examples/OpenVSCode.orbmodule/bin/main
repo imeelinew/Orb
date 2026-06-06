@@ -1,0 +1,49 @@
+#!/bin/sh
+set -eu
+
+case "${1:-status}" in
+  start)
+    exit 0
+    ;;
+  stop)
+    exit 0
+    ;;
+  status)
+    echo "ready"
+    ;;
+  settings)
+    case "${2:-}" in
+      get)
+        key="${3:-}"
+        [ -n "$key" ] || exit 2
+        defaults read "${ORB_MODULE_ID:-com.eli.orb.example.open-vscode}" "$key" 2>/dev/null || true
+        ;;
+      set)
+        key="${3:-}"
+        value="${4:-}"
+        [ -n "$key" ] || exit 2
+        defaults write "${ORB_MODULE_ID:-com.eli.orb.example.open-vscode}" "$key" "$value"
+        ;;
+      *)
+        echo "Unknown settings command: ${2:-}" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  action)
+    case "${2:-}" in
+      open)
+        app_name="$(defaults read "${ORB_MODULE_ID:-com.eli.orb.example.open-vscode}" appName 2>/dev/null || echo "Visual Studio Code")"
+        open -a "$app_name"
+        ;;
+      *)
+        echo "Unknown action: ${2:-}" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    echo "Unknown command: $1" >&2
+    exit 2
+    ;;
+esac
