@@ -288,6 +288,7 @@ struct OrbView: View {
                             }
                             .frame(minHeight: 48)
                         }
+                        .padding(.horizontal, 10)
                     }
                 }
             }
