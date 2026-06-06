@@ -18,7 +18,7 @@ final class OrbWindowController: NSObject, NSWindowDelegate {
         let contentSize = NSSize(width: 720, height: 600)
         let minimumContentSize = NSSize(width: 650, height: 540)
 
-        win.title = "右键菜单"
+        win.title = "模块"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         win.isReleasedWhenClosed = false
         win.setContentSize(contentSize)

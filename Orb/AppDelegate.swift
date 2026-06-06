@@ -65,11 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installMainMenu()
         configureStatusItem()
         installApplicationScripts()
-        setFinderExtensionEnabled(true)
-        windowOperationManager.start()
+        syncFinderExtensionAvailability()
+        syncWindowOperationManager()
         inputCorrectionManager.refresh()
         observeDefaultsChanges()
         startPopoverEventWatcher()
+        showMainWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -80,6 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         inputCorrectionManager.stop()
         windowOperationManager.stop()
         disableFinderExtensionForTermination()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMainWindow()
+        return false
     }
 
     private func installMainMenu() {
@@ -161,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func refreshStatusItemConfiguration() {
-        let shouldShowNetworkSpeed = MenuBarConfiguration.showsNetworkSpeed()
+        let shouldShowNetworkSpeed = MenuBarConfiguration.isEnabled() && MenuBarConfiguration.showsNetworkSpeed()
         guard shouldShowNetworkSpeed != isShowingNetworkSpeed else {
             refreshStatusItemButton()
             return
@@ -367,6 +373,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.statusItem.menu = nil
+                self?.syncFinderExtensionAvailability()
+                self?.syncWindowOperationManager()
                 self?.refreshStatusItemConfiguration()
                 self?.inputCorrectionManager.refresh()
             }
@@ -519,6 +527,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ = runTool("/usr/bin/pluginkit", arguments: ["-e", isEnabled ? "use" : "ignore", "-i", finderSyncBundleIdentifier])
         if !isEnabled {
             _ = runTool("/usr/bin/pkill", arguments: ["-f", "OrbFinderSync.appex"])
+        }
+    }
+
+    private func syncFinderExtensionAvailability() {
+        setFinderExtensionEnabled(MenuActionConfiguration.isEnabled())
+    }
+
+    private func syncWindowOperationManager() {
+        if WindowOperationConfiguration.isEnabled() {
+            windowOperationManager.start()
+        } else {
+            windowOperationManager.stop()
         }
     }
 

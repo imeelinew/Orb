@@ -4,11 +4,12 @@ import PermissionFlow
 import SwiftUI
 
 struct OrbView: View {
-    @State private var selection: SettingsPage? = .contextMenu
+    @State private var selection: SettingsPage? = .modules
     @State private var contextMenuEnabled = MenuActionConfiguration.isEnabled()
     @State private var enabledActionIDs = MenuActionConfiguration.enabledIDs()
     @State private var windowOperationsEnabled = WindowOperationConfiguration.isEnabled()
     @State private var enabledWindowOperationIDs = WindowOperationConfiguration.enabledIDs()
+    @State private var menuBarModuleEnabled = MenuBarConfiguration.isEnabled()
     @State private var showsNetworkSpeed = MenuBarConfiguration.showsNetworkSpeed()
     @State private var inputCorrectionEnabled = InputCorrectionConfiguration.isEnabled()
     @State private var inputCorrectionModelSource = InputCorrectionConfiguration.modelSource()
@@ -17,6 +18,7 @@ struct OrbView: View {
     @State private var inputCorrectionBaseURL = InputCorrectionConfiguration.baseURL()
     @State private var modelConnectionMessage: String?
     @State private var isTestingModelConnection = false
+    @State private var modulesSearchText = ""
     @State private var contextMenuSearchText = ""
     @State private var windowOperationsSearchText = ""
     @State private var menuBarSearchText = ""
@@ -26,6 +28,7 @@ struct OrbView: View {
     private let sidebarIconCornerRadius: Double = 6
 
     enum SettingsPage: String, CaseIterable, Hashable, Identifiable {
+        case modules
         case contextMenu
         case windowOperations
         case menuBar
@@ -34,6 +37,8 @@ struct OrbView: View {
         var id: String { rawValue }
         var title: String {
             switch self {
+            case .modules:
+                return "模块"
             case .contextMenu:
                 return "右键菜单"
             case .windowOperations:
@@ -47,6 +52,8 @@ struct OrbView: View {
 
         var symbolName: String {
             switch self {
+            case .modules:
+                return "puzzlepiece.extension.fill"
             case .contextMenu:
                 return "contextualmenu.and.cursorarrow"
             case .windowOperations:
@@ -60,6 +67,12 @@ struct OrbView: View {
 
         var iconGradient: LinearGradient {
             switch self {
+            case .modules:
+                return LinearGradient(
+                    colors: [Color(red: 1.0, green: 0.76, blue: 0.24), Color(red: 0.95, green: 0.54, blue: 0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             case .contextMenu:
                 return LinearGradient(
                     colors: [Color(red: 1.0, green: 0.62, blue: 0.48), Color(red: 1.0, green: 0.32, blue: 0.22)],
@@ -88,12 +101,29 @@ struct OrbView: View {
         }
     }
 
+    private struct ModuleItem: Identifiable, Hashable {
+        let page: SettingsPage
+        let description: String
+
+        var id: SettingsPage { page }
+        var title: String { page.title }
+    }
+
+    private static let moduleItems: [ModuleItem] = [
+        ModuleItem(page: .contextMenu, description: "在 Finder 右键中使用 Orb 添加的自定义功能。"),
+        ModuleItem(page: .windowOperations, description: "使用快捷键对窗口进行快速操作。"),
+        ModuleItem(page: .menuBar, description: "自定义 Orb 的菜单栏选项。"),
+        ModuleItem(page: .inputCorrection, description: "接入大模型对输入文本实时纠错。")
+    ]
+
     private var selectedPage: SettingsPage {
-        selection ?? .contextMenu
+        selection ?? .modules
     }
 
     private var searchPrompt: String {
         switch selectedPage {
+        case .modules:
+            return "搜索模块"
         case .contextMenu:
             return "搜索右键菜单"
         case .windowOperations:
@@ -109,6 +139,8 @@ struct OrbView: View {
         Binding(
             get: {
                 switch selectedPage {
+                case .modules:
+                    return modulesSearchText
                 case .contextMenu:
                     return contextMenuSearchText
                 case .windowOperations:
@@ -121,6 +153,8 @@ struct OrbView: View {
             },
             set: { newValue in
                 switch selectedPage {
+                case .modules:
+                    modulesSearchText = newValue
                 case .contextMenu:
                     contextMenuSearchText = newValue
                 case .windowOperations:
@@ -156,9 +190,15 @@ struct OrbView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                ForEach(SettingsPage.allCases) { page in
-                    NavigationLink(value: page) {
-                        SidebarPageLabel(page: page)
+                NavigationLink(value: SettingsPage.modules) {
+                    SidebarPageLabel(page: .modules)
+                }
+
+                Section("模块") {
+                    ForEach(enabledModuleItems) { module in
+                        NavigationLink(value: module.page) {
+                            SidebarPageLabel(page: module.page)
+                        }
                     }
                 }
             }
@@ -199,31 +239,58 @@ struct OrbView: View {
         .onAppear {
             persistEnabledActions()
             persistEnabledWindowOperations()
+            persistMenuBarModuleEnabled()
             persistMenuBarConfiguration()
         }
         .onChange(of: contextMenuEnabled) { _, _ in
             persistEnabledActions()
+            moveSelectionToModulesIfDisabled(.contextMenu, isEnabled: contextMenuEnabled)
         }
         .onChange(of: enabledActionIDs) { _, _ in
             persistEnabledActions()
         }
         .onChange(of: windowOperationsEnabled) { _, _ in
             persistEnabledWindowOperations()
+            moveSelectionToModulesIfDisabled(.windowOperations, isEnabled: windowOperationsEnabled)
         }
         .onChange(of: enabledWindowOperationIDs) { _, _ in
             persistEnabledWindowOperations()
+        }
+        .onChange(of: menuBarModuleEnabled) { _, _ in
+            persistMenuBarModuleEnabled()
+            moveSelectionToModulesIfDisabled(.menuBar, isEnabled: menuBarModuleEnabled)
         }
         .onChange(of: showsNetworkSpeed) { _, _ in
             persistMenuBarConfiguration()
         }
         .onChange(of: inputCorrectionEnabled) { _, _ in
             persistInputCorrectionEnabled()
+            moveSelectionToModulesIfDisabled(.inputCorrection, isEnabled: inputCorrectionEnabled)
         }
     }
 
     @ViewBuilder
     private var detailContent: some View {
         switch selectedPage {
+        case .modules:
+            Form {
+                Section {
+                    ForEach(filteredModuleItems) { module in
+                        Toggle(isOn: moduleBinding(for: module.page)) {
+                            HStack(spacing: 12) {
+                                SidebarCategoryIcon(page: module.page)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(module.title)
+                                    Text(module.description)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(minHeight: 48)
+                        }
+                    }
+                }
+            }
         case .contextMenu:
             Form {
                 Section("总开关") {
@@ -355,6 +422,18 @@ struct OrbView: View {
         }
     }
 
+    private var enabledModuleItems: [ModuleItem] {
+        Self.moduleItems.filter { isModuleEnabled($0.page) }
+    }
+
+    private var filteredModuleItems: [ModuleItem] {
+        let query = modulesSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return Self.moduleItems }
+        return Self.moduleItems.filter { module in
+            module.title.localizedStandardContains(query)
+        }
+    }
+
     private var filteredWindowOperations: [WindowOperation] {
         let query = windowOperationsSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return WindowOperation.all }
@@ -374,6 +453,45 @@ struct OrbView: View {
                 }
             }
         )
+    }
+
+    private func moduleBinding(for page: SettingsPage) -> Binding<Bool> {
+        Binding(
+            get: { isModuleEnabled(page) },
+            set: { isEnabled in
+                setModule(page, isEnabled: isEnabled)
+            }
+        )
+    }
+
+    private func isModuleEnabled(_ page: SettingsPage) -> Bool {
+        switch page {
+        case .modules:
+            return true
+        case .contextMenu:
+            return contextMenuEnabled
+        case .windowOperations:
+            return windowOperationsEnabled
+        case .menuBar:
+            return menuBarModuleEnabled
+        case .inputCorrection:
+            return inputCorrectionEnabled
+        }
+    }
+
+    private func setModule(_ page: SettingsPage, isEnabled: Bool) {
+        switch page {
+        case .modules:
+            return
+        case .contextMenu:
+            contextMenuEnabled = isEnabled
+        case .windowOperations:
+            windowOperationsEnabled = isEnabled
+        case .menuBar:
+            menuBarModuleEnabled = isEnabled
+        case .inputCorrection:
+            inputCorrectionEnabled = isEnabled
+        }
     }
 
     private func binding(for operation: WindowOperation) -> Binding<Bool> {
@@ -400,12 +518,21 @@ struct OrbView: View {
         WindowOperationConfiguration.setEnabledIDs(enabledWindowOperationIDs)
     }
 
+    private func persistMenuBarModuleEnabled() {
+        MenuBarConfiguration.setEnabled(menuBarModuleEnabled)
+    }
+
     private func persistMenuBarConfiguration() {
         MenuBarConfiguration.setShowsNetworkSpeed(showsNetworkSpeed)
     }
 
     private func persistInputCorrectionEnabled() {
         InputCorrectionConfiguration.setEnabled(inputCorrectionEnabled)
+    }
+
+    private func moveSelectionToModulesIfDisabled(_ page: SettingsPage, isEnabled: Bool) {
+        guard !isEnabled, selectedPage == page else { return }
+        selection = .modules
     }
 
     private var inputCorrectionModelSourcePicker: some View {

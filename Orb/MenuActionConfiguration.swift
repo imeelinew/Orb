@@ -137,10 +137,26 @@ enum WindowOperationConfiguration {
 }
 
 enum MenuBarConfiguration {
+    static let isEnabledKey = "menuBarModuleEnabled"
     static let showsNetworkSpeedKey = "menuBarShowsNetworkSpeed"
+
+    static var defaultIsEnabled: Bool {
+        true
+    }
 
     static var defaultShowsNetworkSpeed: Bool {
         false
+    }
+
+    static func isEnabled() -> Bool {
+        guard UserDefaults.standard.object(forKey: isEnabledKey) != nil else {
+            return defaultIsEnabled
+        }
+        return UserDefaults.standard.bool(forKey: isEnabledKey)
+    }
+
+    static func setEnabled(_ isEnabled: Bool) {
+        UserDefaults.standard.set(isEnabled, forKey: isEnabledKey)
     }
 
     static func showsNetworkSpeed() -> Bool {
