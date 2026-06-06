@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import PermissionFlow
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct OrbView: View {
     @StateObject private var moduleHost = OrbModuleHost.shared
@@ -167,6 +168,25 @@ struct OrbView: View {
                 .settingsContentMargins()
                 .scrollContentBackground(.hidden)
                 .navigationTitle(selectedTitle)
+                .toolbar {
+                    if selectedPage == .modules {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                installModuleFromPanel()
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(width: 28, height: 28)
+                                    .contentShape(Circle())
+                            }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.circle)
+                            .controlSize(.regular)
+                            .accessibilityLabel("安装模块")
+                            .help("安装模块")
+                        }
+                    }
+                }
             }
         }
         .environment(\.sidebarIconTileSize, sidebarIconTileSize)
@@ -239,21 +259,24 @@ struct OrbView: View {
         switch selectedPage {
         case .modules:
             Form {
-                Section {
-                    ForEach(filteredModuleItems) { module in
-                        Toggle(isOn: moduleBinding(for: module.id)) {
-                            HStack(spacing: 12) {
-                                ModuleIconTile(icon: module.icon)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(module.name)
-                                    Text(module.desc)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(minHeight: 48)
+                if !filteredBundledModuleItems.isEmpty {
+                    Section("内置模块") {
+                        ForEach(filteredBundledModuleItems) { module in
+                            moduleListRow(module)
                         }
-                        .padding(.horizontal, 10)
+                    }
+                }
+
+                if !filteredUserModuleItems.isEmpty {
+                    Section("自定义模块") {
+                        ForEach(filteredUserModuleItems) { module in
+                            moduleListRow(module)
+                                .contextMenu {
+                                    Button("卸载模块", role: .destructive) {
+                                        uninstallModule(module)
+                                    }
+                                }
+                        }
                     }
                 }
             }
@@ -404,12 +427,36 @@ struct OrbView: View {
         }
     }
 
+    private var filteredBundledModuleItems: [OrbModule] {
+        filteredModuleItems.filter { $0.source == .bundled }
+    }
+
+    private var filteredUserModuleItems: [OrbModule] {
+        filteredModuleItems.filter { $0.source == .user }
+    }
+
     private var filteredWindowOperations: [WindowOperation] {
         let query = windowOperationsSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return WindowOperation.all }
         return WindowOperation.all.filter { operation in
             operation.title.localizedStandardContains(query)
         }
+    }
+
+    private func moduleListRow(_ module: OrbModule) -> some View {
+        Toggle(isOn: moduleBinding(for: module.id)) {
+            HStack(spacing: 12) {
+                ModuleIconTile(icon: module.icon)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(module.name)
+                    Text(module.desc)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(minHeight: 48)
+        }
+        .padding(.horizontal, 10)
     }
 
     private func binding(for action: MenuAction) -> Binding<Bool> {
@@ -447,6 +494,37 @@ struct OrbView: View {
         default:
             moduleHost.setEnabled(isEnabled, for: moduleID)
             moveSelectionToModulesIfDisabled(moduleID, isEnabled: isEnabled)
+        }
+    }
+
+    private func installModuleFromPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: OrbModuleLoader.packageExtension) ?? .package
+        ]
+
+        guard panel.runModal() == .OK,
+              let moduleURL = panel.url else {
+            return
+        }
+
+        do {
+            _ = try moduleHost.installModule(from: moduleURL)
+        } catch {
+            NSSound.beep()
+            NSLog("[Orb] Failed to install module: \(error)")
+        }
+    }
+
+    private func uninstallModule(_ module: OrbModule) {
+        if moduleHost.uninstall(moduleID: module.id) {
+            moveSelectionToModulesIfDisabled(module.id, isEnabled: false)
+        } else {
+            NSSound.beep()
         }
     }
 

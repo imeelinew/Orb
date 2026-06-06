@@ -136,6 +136,41 @@ final class OrbModuleHost: ObservableObject {
     }
 
     @discardableResult
+    func installModule(from sourceURL: URL) throws -> OrbModule {
+        let accessingSecurityScopedResource = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessingSecurityScopedResource {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        guard let candidate = OrbModuleLoader.loadModule(at: sourceURL, source: .user) else {
+            throw OrbModuleInstallError.invalidPackage(sourceURL)
+        }
+
+        let existingModule = module(withID: candidate.id)
+        let shouldReenable = existingModule?.source == .user && isEnabled(candidate.id)
+        if shouldReenable {
+            setEnabled(false, for: candidate.id)
+        }
+
+        let installed = try OrbModuleInstaller.installPackage(
+            from: sourceURL,
+            into: userModulesDirectoryURL,
+            existingModules: modules
+        )
+        reloadModules()
+
+        if shouldReenable {
+            setEnabled(true, for: installed.id)
+        } else {
+            startEnabledExecutableModules()
+        }
+
+        return module(withID: installed.id) ?? installed
+    }
+
+    @discardableResult
     func uninstall(moduleID: String) -> Bool {
         guard let module = module(withID: moduleID), module.source == .user else {
             return false
@@ -319,5 +354,75 @@ final class OrbModuleHost: ObservableObject {
 
     private func enabledDefaultsKey(for moduleID: String) -> String {
         "orbModuleEnabled.\(moduleID)"
+    }
+}
+
+enum OrbModuleInstallError: Error, Equatable {
+    case invalidPackage(URL)
+    case bundledModuleID(String)
+}
+
+enum OrbModuleInstaller {
+    static func installPackage(
+        from sourceURL: URL,
+        into installDirectoryURL: URL,
+        existingModules: [OrbModule]
+    ) throws -> OrbModule {
+        guard sourceURL.pathExtension == OrbModuleLoader.packageExtension,
+              let candidate = OrbModuleLoader.loadModule(at: sourceURL, source: .user) else {
+            throw OrbModuleInstallError.invalidPackage(sourceURL)
+        }
+
+        if existingModules.contains(where: { $0.id == candidate.id && $0.source == .bundled }) {
+            throw OrbModuleInstallError.bundledModuleID(candidate.id)
+        }
+
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: installDirectoryURL, withIntermediateDirectories: true)
+
+        if let existingUserModule = existingModules.first(where: { $0.id == candidate.id && $0.source == .user }) {
+            if sameFile(sourceURL, existingUserModule.packageURL) {
+                return existingUserModule
+            }
+            try? fileManager.removeItem(at: existingUserModule.packageURL)
+        }
+
+        let destinationURL = uniqueDestinationURL(
+            for: sourceURL,
+            in: installDirectoryURL,
+            fileManager: fileManager
+        )
+        if sameFile(sourceURL, destinationURL) {
+            return candidate
+        }
+
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        guard let installed = OrbModuleLoader.loadModule(at: destinationURL, source: .user) else {
+            throw OrbModuleInstallError.invalidPackage(destinationURL)
+        }
+        return installed
+    }
+
+    private static func uniqueDestinationURL(
+        for sourceURL: URL,
+        in installDirectoryURL: URL,
+        fileManager: FileManager
+    ) -> URL {
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let packageExtension = OrbModuleLoader.packageExtension
+        var destinationURL = installDirectoryURL
+            .appendingPathComponent(sourceURL.lastPathComponent, isDirectory: true)
+        var index = 2
+        while fileManager.fileExists(atPath: destinationURL.path) {
+            destinationURL = installDirectoryURL
+                .appendingPathComponent("\(baseName)-\(index).\(packageExtension)", isDirectory: true)
+            index += 1
+        }
+        return destinationURL
+    }
+
+    private static func sameFile(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.resolvingSymlinksInPath().path
+            == rhs.standardizedFileURL.resolvingSymlinksInPath().path
     }
 }

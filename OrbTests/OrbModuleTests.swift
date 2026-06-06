@@ -59,6 +59,53 @@ struct OrbModuleTests {
         #expect(appName == "TextEdit")
     }
 
+    @Test func installerCopiesModulePackageIntoInstallDirectory() throws {
+        let sourceURL = try repositoryRoot()
+            .appendingPathComponent("Examples/OpenVSCode.orbmodule", isDirectory: true)
+        let installDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: installDirectoryURL)
+        }
+
+        let installed = try OrbModuleInstaller.installPackage(
+            from: sourceURL,
+            into: installDirectoryURL,
+            existingModules: []
+        )
+
+        #expect(installed.source == .user)
+        #expect(installed.packageURL.deletingLastPathComponent() == installDirectoryURL)
+        #expect(FileManager.default.fileExists(
+            atPath: installed.packageURL.appendingPathComponent("module.json").path
+        ))
+        #expect(FileManager.default.isExecutableFile(
+            atPath: installed.packageURL.appendingPathComponent("bin/main").path
+        ))
+    }
+
+    @Test func installerRejectsModulesThatDuplicateBundledIDs() throws {
+        let sourceURL = try repositoryRoot()
+            .appendingPathComponent("Examples/OpenVSCode.orbmodule", isDirectory: true)
+        let installDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let bundledModule = try #require(OrbModuleLoader.loadModule(at: sourceURL, source: .bundled))
+        defer {
+            try? FileManager.default.removeItem(at: installDirectoryURL)
+        }
+
+        do {
+            _ = try OrbModuleInstaller.installPackage(
+                from: sourceURL,
+                into: installDirectoryURL,
+                existingModules: [bundledModule]
+            )
+            Issue.record("Expected bundled duplicate module id to be rejected")
+        } catch let error as OrbModuleInstallError {
+            #expect(error == .bundledModuleID(bundledModule.id))
+        }
+    }
+
     private func repositoryRoot() throws -> URL {
         var url = URL(fileURLWithPath: #filePath)
         while url.path != "/" {
