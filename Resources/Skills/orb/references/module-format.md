@@ -16,10 +16,10 @@ FeatureName.orbmodule/
 
 The package directory name is a technical name and must stay ASCII-only, for example `CommandLine.orbmodule`. The name shown as the Orb sidebar/module case comes from manifest `name`; it may be localized and does not need to match the package directory.
 
-Finished modules should be written under `$HOME/Documents/`, for example:
+Finished modules should be written under `$HOME/Documents/Orb Modules/`, for example:
 
 ```text
-~/Documents/FeatureName.orbmodule/
+~/Documents/Orb Modules/FeatureName.orbmodule/
 ```
 
 When delivering a module, tell the user the exact path.
@@ -114,11 +114,11 @@ Environment variables:
 
 ## Installation
 
-Install by copying the whole package directory from `$HOME/Documents/`:
+Install by copying the whole package directory from `$HOME/Documents/Orb Modules/`:
 
 ```sh
 mkdir -p "$HOME/Library/Application Support/Orb/Modules"
-cp -R ~/Documents/FeatureName.orbmodule "$HOME/Library/Application Support/Orb/Modules/"
+cp -R "$HOME/Documents/Orb Modules/FeatureName.orbmodule" "$HOME/Library/Application Support/Orb/Modules/"
 ```
 
 Then open Orb, go to `模块`, and toggle the module on.

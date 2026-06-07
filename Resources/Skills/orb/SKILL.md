@@ -25,7 +25,7 @@ Use this skill for Orb app work and Orb module development. Treat the live repos
    - installed/runtime behavior when the user reports UI or app-launch issues
 2. For Orb app changes, keep edits scoped to the requested module/UI/runtime surface.
 3. For `.orbmodule` package work, read `references/module-format.md` before writing manifests or executable entrypoints.
-4. Put finished `.orbmodule` packages in `$HOME/Documents/`. Do not leave finished modules inside the Orb repository unless the user explicitly asks for a repo example.
+4. Put finished `.orbmodule` packages in `$HOME/Documents/Orb Modules/`. Create the directory if it does not exist. Do not leave finished modules inside the Orb repository unless the user explicitly asks for a repo example.
 5. Tell the user the exact module output path in the final response.
 6. Install third-party modules by placing the whole package directory in:
    - `~/Library/Application Support/Orb/Modules/`
@@ -56,7 +56,7 @@ Use this skill for Orb app work and Orb module development. Treat the live repos
 - Settings UI: `Orb/OrbView.swift`
 - App lifecycle: `Orb/AppDelegate.swift`
 - Bundled modules: `Resources/Modules/`
-- Finished module output: `$HOME/Documents/`
+- Finished module output: `$HOME/Documents/Orb Modules/`
 - User-installed modules: `~/Library/Application Support/Orb/Modules/`
 
 ## When Editing Orb UI
@@ -80,7 +80,7 @@ Use this skill for Orb app work and Orb module development. Treat the live repos
 - Use module settings or capabilities to surface memorable user actions. Each user-facing item can include a concise manifest `desc`; Orb shows setting descriptions under the item title in the module detail view.
 - For example, a command-line module should show entries such as `orb cursor` and `orb vscode` directly in Orb, with per-item `desc` values when the command name needs context.
 - Use reverse-DNS IDs, for example `com.example.orb.open-vscode`.
-- Write finished module packages under `$HOME/Documents/`, for example `~/Documents/CommandLine.orbmodule`.
+- Write finished module packages under `$HOME/Documents/Orb Modules/`, for example `~/Documents/Orb Modules/CommandLine.orbmodule`.
 - In the final response, state the exact module path.
 - Use `runtime.kind: "executable"` for third-party modules unless changing Orb native code too.
 - Keep all runtime assets inside the `.orbmodule` package.

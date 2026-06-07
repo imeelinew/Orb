@@ -141,6 +141,13 @@ struct OrbModuleTests {
         }
     }
 
+    @Test func moduleDevelopmentOutputDefaultsToOrbModulesFolder() throws {
+        let outputURL = OrbModuleDevelopmentOutput.directoryURL()
+
+        #expect(outputURL.lastPathComponent == "Orb Modules")
+        #expect(outputURL.deletingLastPathComponent().lastPathComponent == "Documents")
+    }
+
     private func repositoryRoot() throws -> URL {
         var url = URL(fileURLWithPath: #filePath)
         while url.path != "/" {

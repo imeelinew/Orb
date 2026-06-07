@@ -527,6 +527,9 @@ struct OrbView: View {
     private func installModuleFromPanel() {
         let panel = NSOpenPanel()
         let delegate = OrbModuleOpenPanelDelegate()
+        if let outputDirectoryURL = try? OrbModuleDevelopmentOutput.ensureDirectoryExists() {
+            panel.directoryURL = outputDirectoryURL
+        }
         panel.delegate = delegate
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
@@ -831,6 +834,24 @@ enum OrbModuleOpenPanelSelection {
         guard url.pathExtension == OrbModuleLoader.packageExtension else {
             throw OrbModuleOpenPanelError.invalidSelection
         }
+    }
+}
+
+enum OrbModuleDevelopmentOutput {
+    static let directoryName = "Orb Modules"
+
+    static func directoryURL(fileManager: FileManager = .default) -> URL {
+        let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+                .appendingPathComponent("Documents", isDirectory: true)
+        return documentsURL.appendingPathComponent(directoryName, isDirectory: true)
+    }
+
+    @discardableResult
+    static func ensureDirectoryExists(fileManager: FileManager = .default) throws -> URL {
+        let url = directoryURL(fileManager: fileManager)
+        try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
     }
 }
 
