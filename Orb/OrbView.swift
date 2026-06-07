@@ -312,6 +312,8 @@ struct OrbView: View {
                                 Text(action.title)
                             }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
                     }
                 }
             }
@@ -325,6 +327,8 @@ struct OrbView: View {
                                 Text(operation.title)
                             }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
                     }
                 }
 

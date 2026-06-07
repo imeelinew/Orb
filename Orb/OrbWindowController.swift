@@ -15,8 +15,8 @@ final class OrbWindowController: NSObject, NSWindowDelegate {
 
         let hosting = NSHostingController(rootView: OrbView())
         let win = NSWindow(contentViewController: hosting)
-        let contentSize = NSSize(width: 720, height: 600)
-        let minimumContentSize = NSSize(width: 650, height: 540)
+        let contentSize = NSSize(width: 900, height: 750)
+        let minimumContentSize = NSSize(width: 812, height: 675)
 
         win.title = "模块"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
