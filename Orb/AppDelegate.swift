@@ -535,6 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             try syncManagedDirectoryContents(from: scriptsSource, to: scriptsDestination, executable: true)
             try syncManagedDirectoryContents(from: templatesSource, to: scriptsDestination, executable: false)
             MenuActionConfiguration.writeEnabledIDs(MenuActionConfiguration.enabledIDs())
+            SubtitleConfiguration.writeConfig()
             NSLog("[Orb] Installed scripts to \(scriptsDestination.path)")
         } catch {
             NSLog("[Orb] Failed to install scripts: \(error)")

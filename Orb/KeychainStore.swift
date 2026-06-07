@@ -3,6 +3,7 @@ import Security
 
 enum KeychainStore {
     static let inputCorrectionAPIKeyAccount = "inputCorrectionAPIKey"
+    static let subtitleLLMAPIKeyAccount = "subtitleLLMAPIKey"
 
     private static let service = "com.eli.Orb"
 

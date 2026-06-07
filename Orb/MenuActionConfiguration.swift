@@ -221,6 +221,101 @@ enum InputCorrectionConfiguration {
     }
 }
 
+enum SubtitleConfiguration {
+    static let whisperLangKey = "subtitleWhisperLang"
+    static let whisperModelKey = "subtitleWhisperModel"
+    static let llmSegmentationEnabledKey = "subtitleLLMSegmentationEnabled"
+    static let llmTranslationEnabledKey = "subtitleLLMTranslationEnabled"
+    static let llmModelKey = "subtitleLLMModel"
+    static let llmBaseURLKey = "subtitleLLMBaseURL"
+
+    static let configFilename = "subtitle-config.json"
+
+    static let defaultWhisperLang = "auto"
+    static let defaultWhisperModel = "ggml-large-v3-turbo.bin"
+    static let defaultLLMSegmentationEnabled = true
+    static let defaultLLMTranslationEnabled = true
+    static let defaultLLMModel = "mimo-v2.5"
+    static let defaultLLMBaseURL = "https://opencode.ai/zen/go/v1/chat/completions"
+
+    static func whisperLang() -> String {
+        UserDefaults.standard.string(forKey: whisperLangKey) ?? defaultWhisperLang
+    }
+
+    static func setWhisperLang(_ value: String) {
+        UserDefaults.standard.set(value, forKey: whisperLangKey)
+    }
+
+    static func whisperModel() -> String {
+        UserDefaults.standard.string(forKey: whisperModelKey) ?? defaultWhisperModel
+    }
+
+    static func setWhisperModel(_ value: String) {
+        UserDefaults.standard.set(value, forKey: whisperModelKey)
+    }
+
+    static func llmSegmentationEnabled() -> Bool {
+        guard UserDefaults.standard.object(forKey: llmSegmentationEnabledKey) != nil else {
+            return defaultLLMSegmentationEnabled
+        }
+        return UserDefaults.standard.bool(forKey: llmSegmentationEnabledKey)
+    }
+
+    static func setLLMSegmentationEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: llmSegmentationEnabledKey)
+    }
+
+    static func llmTranslationEnabled() -> Bool {
+        guard UserDefaults.standard.object(forKey: llmTranslationEnabledKey) != nil else {
+            return defaultLLMTranslationEnabled
+        }
+        return UserDefaults.standard.bool(forKey: llmTranslationEnabledKey)
+    }
+
+    static func setLLMTranslationEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: llmTranslationEnabledKey)
+    }
+
+    static func llmModel() -> String {
+        UserDefaults.standard.string(forKey: llmModelKey) ?? defaultLLMModel
+    }
+
+    static func setLLMModel(_ value: String) {
+        UserDefaults.standard.set(value, forKey: llmModelKey)
+    }
+
+    static func llmBaseURL() -> String {
+        UserDefaults.standard.string(forKey: llmBaseURLKey) ?? defaultLLMBaseURL
+    }
+
+    static func setLLMBaseURL(_ value: String) {
+        UserDefaults.standard.set(value, forKey: llmBaseURLKey)
+    }
+
+    static func configURL() -> URL {
+        MenuActionConfiguration.configurationURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent(configFilename)
+    }
+
+    static func writeConfig() {
+        let dict: [String: Any] = [
+            "whisperLang": whisperLang(),
+            "whisperModel": whisperModel(),
+            "llmSegmentationEnabled": llmSegmentationEnabled(),
+            "llmTranslationEnabled": llmTranslationEnabled(),
+            "llmModel": llmModel(),
+            "llmBaseURL": llmBaseURL()
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys, .prettyPrinted]) else {
+            return
+        }
+        let url = configURL()
+        if let existing = try? Data(contentsOf: url), existing == data { return }
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
 struct WindowOperation: Identifiable, Hashable {
     let id: String
     let title: String

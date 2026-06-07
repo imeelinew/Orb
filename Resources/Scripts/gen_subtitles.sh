@@ -13,13 +13,42 @@ MODEL="$HOME/whisper-models/ggml-large-v3-turbo.bin"
 WHISPER_LANG="auto"
 WHISPER_MODEL_SLOT_COUNT=1
 LLM_SEGMENTATION_ENABLED=1
-LLM_OPENROUTER_API_KEY="sk-mHu8S0JRQkJravH3fNLi2RDmQCOBVKXTnVqfrYEMsdXIFWk5us5e9gy6YUrBvQAS"
+LLM_OPENROUTER_API_KEY=""
 LLM_OPENROUTER_BASE_URL="https://opencode.ai/zen/go/v1/chat/completions"
 LLM_OPENROUTER_MODEL="mimo-v2.5"
 LLM_SEGMENTATION_BATCH_SIZE=160
 LLM_TRANSLATION_ENABLED=1
 LLM_TRANSLATION_BATCH_CUES=80
 LLM_TRANSLATION_CONTEXT_CUES=8
+
+CONFIG_FILE="$(dirname "$0")/subtitle-config.json"
+if [ -f "$CONFIG_FILE" ]; then
+    eval "$(/usr/bin/python3 - "$CONFIG_FILE" <<'PYCFG'
+import json, sys, shlex
+try:
+    with open(sys.argv[1]) as f:
+        cfg = json.load(f)
+    model_file = cfg.get("whisperModel", "ggml-large-v3-turbo.bin")
+    lang = cfg.get("whisperLang", "auto")
+    seg = 1 if cfg.get("llmSegmentationEnabled", True) else 0
+    trans = 1 if cfg.get("llmTranslationEnabled", True) else 0
+    llm_model = cfg.get("llmModel", "mimo-v2.5")
+    llm_url = cfg.get("llmBaseURL", "https://opencode.ai/zen/go/v1/chat/completions")
+    import os
+    model_path = os.path.expanduser(f"~/whisper-models/{model_file}")
+    print(f"MODEL={shlex.quote(model_path)}")
+    print(f"WHISPER_LANG={shlex.quote(lang)}")
+    print(f"LLM_SEGMENTATION_ENABLED={seg}")
+    print(f"LLM_TRANSLATION_ENABLED={trans}")
+    print(f"LLM_OPENROUTER_MODEL={shlex.quote(llm_model)}")
+    print(f"LLM_OPENROUTER_BASE_URL={shlex.quote(llm_url)}")
+except Exception:
+    pass
+PYCFG
+)"
+fi
+
+LLM_OPENROUTER_API_KEY="$(/usr/bin/security find-generic-password -s com.eli.Orb -a subtitleLLMAPIKey -w 2>/dev/null || true)"
 STATE_DIR="$(dirname "$0")/subtitle-jobs"
 MODEL_SLOT_DIR="$STATE_DIR/model-slots"
 current_src=""

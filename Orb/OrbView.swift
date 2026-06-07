@@ -19,6 +19,11 @@ struct OrbView: View {
     @State private var inputCorrectionBaseURL = InputCorrectionConfiguration.baseURL()
     @State private var modelConnectionMessage: String?
     @State private var isTestingModelConnection = false
+    @State private var isTestingSubtitleConnection = false
+    @State private var subtitleConfigWriteCancellable: AnyCancellable?
+    @State private var subtitleLLMModel = SubtitleConfiguration.llmModel()
+    @State private var subtitleLLMBaseURL = SubtitleConfiguration.llmBaseURL()
+    @State private var subtitleLLMAPIKey = KeychainStore.string(for: KeychainStore.subtitleLLMAPIKeyAccount)
     @State private var modulesSearchText = ""
     @State private var contextMenuSearchText = ""
     @State private var windowOperationsSearchText = ""
@@ -276,6 +281,9 @@ struct OrbView: View {
             persistInputCorrectionEnabled()
             moveSelectionToModulesIfDisabled(OrbModuleID.inputCorrection, isEnabled: inputCorrectionEnabled)
         }
+        .onChange(of: subtitleLLMModel) { _, _ in scheduleSubtitleConfigWrite() }
+        .onChange(of: subtitleLLMBaseURL) { _, _ in scheduleSubtitleConfigWrite() }
+        .onChange(of: subtitleLLMAPIKey) { _, _ in scheduleSubtitleConfigWrite() }
         .onReceive(moduleHost.$enabledModuleIDs) { _ in
             syncEnabledStateFromModuleHost()
         }
@@ -315,6 +323,78 @@ struct OrbView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                     }
+                }
+
+                Section("字幕设置") {
+                    LabeledContent {
+                        Picker("", selection: subtitleWhisperLangBinding) {
+                            Text("自动检测").tag("auto")
+                            Text("英语").tag("en")
+                            Text("中文").tag("zh")
+                            Text("日语").tag("ja")
+                            Text("韩语").tag("ko")
+                            Text("法语").tag("fr")
+                            Text("德语").tag("de")
+                            Text("西班牙语").tag("es")
+                        }
+                    } label: {
+                        Text("识别语言")
+                    }
+
+                    LabeledContent {
+                        Picker("", selection: subtitleWhisperModelBinding) {
+                            Text("large-v3-turbo").tag("ggml-large-v3-turbo.bin")
+                            Text("large-v3").tag("ggml-large-v3.bin")
+                            Text("medium").tag("ggml-medium.bin")
+                            Text("small").tag("ggml-small.bin")
+                        }
+                    } label: {
+                        Text("Whisper 模型")
+                    }
+
+                    Toggle("语义断句", isOn: subtitleLLMSegmentationBinding)
+                    Toggle("双语翻译", isOn: subtitleLLMTranslationBinding)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField(
+                            text: $subtitleLLMModel,
+                            prompt: Text("mimo-v2.5")
+                        ) {
+                            Label("LLM 模型", systemImage: "cpu")
+                        }
+                        Text("用于语义断句和翻译的 LLM 模型名称。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField(
+                            text: $subtitleLLMBaseURL,
+                            prompt: Text("https://opencode.ai/zen/go/v1/chat/completions")
+                        ) {
+                            Label("API 地址", systemImage: "link")
+                        }
+                        Text("OpenAI 兼容的 chat completions 地址。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        SecureField(
+                            text: $subtitleLLMAPIKey,
+                            prompt: Text("sk-...")
+                        ) {
+                            Label("API Key", systemImage: "key")
+                        }
+                        Text("用于访问 LLM 服务的 API Key。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(isTestingSubtitleConnection ? "测试中…" : "测试连接") {
+                        testSubtitleConnection()
+                    }
+                    .disabled(isTestingSubtitleConnection)
                 }
             }
         case .module(let moduleID) where moduleID == OrbModuleID.windowOperations:
@@ -625,6 +705,82 @@ struct OrbView: View {
 
     private func persistInputCorrectionEnabled() {
         InputCorrectionConfiguration.setEnabled(inputCorrectionEnabled)
+    }
+
+    private func scheduleSubtitleConfigWrite() {
+        subtitleConfigWriteCancellable?.cancel()
+        SubtitleConfiguration.setLLMModel(subtitleLLMModel.trimmingCharacters(in: .whitespacesAndNewlines))
+        SubtitleConfiguration.setLLMBaseURL(subtitleLLMBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+        try? KeychainStore.setString(
+            subtitleLLMAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            for: KeychainStore.subtitleLLMAPIKeyAccount
+        )
+        subtitleConfigWriteCancellable = Just(())
+            .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { SubtitleConfiguration.writeConfig() }
+    }
+
+    private var subtitleWhisperLangBinding: Binding<String> {
+        Binding(
+            get: { SubtitleConfiguration.whisperLang() },
+            set: { newValue in
+                SubtitleConfiguration.setWhisperLang(newValue)
+                scheduleSubtitleConfigWrite()
+            }
+        )
+    }
+
+    private var subtitleWhisperModelBinding: Binding<String> {
+        Binding(
+            get: { SubtitleConfiguration.whisperModel() },
+            set: { newValue in
+                SubtitleConfiguration.setWhisperModel(newValue)
+                scheduleSubtitleConfigWrite()
+            }
+        )
+    }
+
+    private var subtitleLLMSegmentationBinding: Binding<Bool> {
+        Binding(
+            get: { SubtitleConfiguration.llmSegmentationEnabled() },
+            set: { newValue in
+                SubtitleConfiguration.setLLMSegmentationEnabled(newValue)
+                scheduleSubtitleConfigWrite()
+            }
+        )
+    }
+
+    private var subtitleLLMTranslationBinding: Binding<Bool> {
+        Binding(
+            get: { SubtitleConfiguration.llmTranslationEnabled() },
+            set: { newValue in
+                SubtitleConfiguration.setLLMTranslationEnabled(newValue)
+                scheduleSubtitleConfigWrite()
+            }
+        )
+    }
+
+    private func testSubtitleConnection() {
+        isTestingSubtitleConnection = true
+        let configuration = RemoteModelConfiguration(
+            apiKey: subtitleLLMAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            model: subtitleLLMModel.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseURL: subtitleLLMBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        Task {
+            do {
+                try await RemoteCorrectionClient().testConnection(configuration: configuration)
+                await MainActor.run {
+                    isTestingSubtitleConnection = false
+                    showToast("连接成功")
+                }
+            } catch {
+                await MainActor.run {
+                    isTestingSubtitleConnection = false
+                    showToast(error.localizedDescription, kind: .error)
+                }
+            }
+        }
     }
 
     private func moveSelectionToModulesIfDisabled(_ moduleID: String, isEnabled: Bool) {
