@@ -21,6 +21,8 @@ struct OrbView: View {
     @State private var isTestingModelConnection = false
     @State private var isTestingSubtitleConnection = false
     @State private var subtitleConfigWriteCancellable: AnyCancellable?
+    @State private var subtitleLLMSegmentationEnabled = SubtitleConfiguration.llmSegmentationEnabled()
+    @State private var subtitleLLMTranslationEnabled = SubtitleConfiguration.llmTranslationEnabled()
     @State private var subtitleLLMModel = SubtitleConfiguration.llmModel()
     @State private var subtitleLLMBaseURL = SubtitleConfiguration.llmBaseURL()
     @State private var subtitleLLMAPIKey = KeychainStore.string(for: KeychainStore.subtitleLLMAPIKeyAccount)
@@ -355,46 +357,48 @@ struct OrbView: View {
                     Toggle("语义断句", isOn: subtitleLLMSegmentationBinding)
                     Toggle("双语翻译", isOn: subtitleLLMTranslationBinding)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField(
-                            text: $subtitleLLMModel,
-                            prompt: Text("mimo-v2.5")
-                        ) {
-                            Label("LLM 模型", systemImage: "cpu")
+                    if subtitleLLMControlsVisible {
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField(
+                                text: $subtitleLLMModel,
+                                prompt: Text("mimo-v2.5")
+                            ) {
+                                Label("LLM 模型", systemImage: "cpu")
+                            }
+                            Text("用于语义断句和翻译的 LLM 模型名称。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        Text("用于语义断句和翻译的 LLM 模型名称。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField(
-                            text: $subtitleLLMBaseURL,
-                            prompt: Text("https://opencode.ai/zen/go/v1/chat/completions")
-                        ) {
-                            Label("API 地址", systemImage: "link")
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField(
+                                text: $subtitleLLMBaseURL,
+                                prompt: Text("https://opencode.ai/zen/go/v1/chat/completions")
+                            ) {
+                                Label("API 地址", systemImage: "link")
+                            }
+                            Text("OpenAI 兼容的 chat completions 地址。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        Text("OpenAI 兼容的 chat completions 地址。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        SecureField(
-                            text: $subtitleLLMAPIKey,
-                            prompt: Text("sk-...")
-                        ) {
-                            Label("API Key", systemImage: "key")
+                        VStack(alignment: .leading, spacing: 4) {
+                            SecureField(
+                                text: $subtitleLLMAPIKey,
+                                prompt: Text("sk-...")
+                            ) {
+                                Label("API Key", systemImage: "key")
+                            }
+                            Text("用于访问 LLM 服务的 API Key。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        Text("用于访问 LLM 服务的 API Key。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
 
-                    Button(isTestingSubtitleConnection ? "测试中…" : "测试连接") {
-                        testSubtitleConnection()
+                        Button(isTestingSubtitleConnection ? "测试中…" : "测试连接") {
+                            testSubtitleConnection()
+                        }
+                        .disabled(isTestingSubtitleConnection)
                     }
-                    .disabled(isTestingSubtitleConnection)
                 }
             }
         case .module(let moduleID) where moduleID == OrbModuleID.windowOperations:
@@ -742,8 +746,9 @@ struct OrbView: View {
 
     private var subtitleLLMSegmentationBinding: Binding<Bool> {
         Binding(
-            get: { SubtitleConfiguration.llmSegmentationEnabled() },
+            get: { subtitleLLMSegmentationEnabled },
             set: { newValue in
+                subtitleLLMSegmentationEnabled = newValue
                 SubtitleConfiguration.setLLMSegmentationEnabled(newValue)
                 scheduleSubtitleConfigWrite()
             }
@@ -752,12 +757,17 @@ struct OrbView: View {
 
     private var subtitleLLMTranslationBinding: Binding<Bool> {
         Binding(
-            get: { SubtitleConfiguration.llmTranslationEnabled() },
+            get: { subtitleLLMTranslationEnabled },
             set: { newValue in
+                subtitleLLMTranslationEnabled = newValue
                 SubtitleConfiguration.setLLMTranslationEnabled(newValue)
                 scheduleSubtitleConfigWrite()
             }
         )
+    }
+
+    private var subtitleLLMControlsVisible: Bool {
+        subtitleLLMSegmentationEnabled || subtitleLLMTranslationEnabled
     }
 
     private func testSubtitleConnection() {

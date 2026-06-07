@@ -116,11 +116,26 @@ struct RemoteCorrectionClient {
             throw RemoteCorrectionClientError.httpStatus(httpResponse.statusCode, body)
         }
 
-        let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
-        guard let content = chatResponse.choices.first?.message.content, !content.isEmpty else {
+        let content = try Self.decodeChatContent(from: data)
+        guard !content.isEmpty else {
             throw RemoteCorrectionClientError.modelReturnedNoContent
         }
         return content
+    }
+
+    static func decodeChatContent(from data: Data) throws -> String {
+        do {
+            let chatResponse = try JSONDecoder().decode(ChatResponse.self, from: data)
+            guard let message = chatResponse.choices.first?.message else {
+                throw RemoteCorrectionClientError.invalidResponse
+            }
+            return (message.content ?? message.reasoningContent ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch let error as RemoteCorrectionClientError {
+            throw error
+        } catch {
+            throw RemoteCorrectionClientError.invalidResponse
+        }
     }
 
     private func decodeCorrectionResponse(from content: String) throws -> CorrectionResponse {
@@ -182,7 +197,17 @@ private struct ChatResponse: Decodable {
     let choices: [Choice]
 
     struct Choice: Decodable {
-        let message: ChatMessage
+        let message: Message
+    }
+
+    struct Message: Decodable {
+        let content: String?
+        let reasoningContent: String?
+
+        enum CodingKeys: String, CodingKey {
+            case content
+            case reasoningContent = "reasoning_content"
+        }
     }
 }
 

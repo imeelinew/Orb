@@ -25,4 +25,41 @@ struct OrbTests {
         #expect(StatusItemClickHandling.action(for: .rightMouseUp) == .ignore)
     }
 
+    @Test func chatResponseAcceptsReasoningContentFallback() throws {
+        let data = """
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "reasoning_content": " OK "
+              }
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let content = try RemoteCorrectionClient.decodeChatContent(from: data)
+
+        #expect(content == "OK")
+    }
+
+    @Test func chatResponseWithoutContentDecodesEmptyString() throws {
+        let data = """
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant"
+              }
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let content = try RemoteCorrectionClient.decodeChatContent(from: data)
+
+        #expect(content.isEmpty)
+    }
+
 }
