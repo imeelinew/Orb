@@ -73,9 +73,6 @@ final class FinderSyncExt: FIFinderSync {
         }
 
         let parent = NSMenuItem(title: "Orb", action: nil, keyEquivalent: "")
-        if let image = cachedSymbol("circle.fill", color: tint, isDark: isDark, glyphSize: 10) {
-            parent.image = image
-        }
         parent.submenu = submenu
         menu.addItem(parent)
         return menu
