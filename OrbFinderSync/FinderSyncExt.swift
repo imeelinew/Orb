@@ -34,6 +34,7 @@ final class FinderSyncExt: FIFinderSync {
 
     private static let logQueue = DispatchQueue(label: "com.eli.Orb.findersync.log")
     private static let logMaxBytes: UInt64 = 1 * 1024 * 1024
+    private static let menuIconSize = NSSize(width: 18, height: 18)
     private var iconCache: [String: NSImage] = [:]
 
     override init() {
@@ -44,10 +45,6 @@ final class FinderSyncExt: FIFinderSync {
     override func menu(for menuKind: FIMenuKind) -> NSMenu {
         let menu = NSMenu(title: "")
         let submenu = NSMenu(title: "Orb")
-
-        let appearance = NSAppearance.currentDrawing()
-        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let tint: NSColor = isDark ? .white : .black
 
         let enabledServiceIDs = enabledServiceIDs
         guard !enabledServiceIDs.isEmpty else {
@@ -66,7 +63,7 @@ final class FinderSyncExt: FIFinderSync {
                 keyEquivalent: ""
             )
             item.tag = index
-            if let image = cachedMenuIcon(for: service, color: tint, isDark: isDark) {
+            if let image = cachedMenuIcon(for: service) {
                 item.image = image
             }
             submenu.addItem(item)
@@ -160,63 +157,123 @@ final class FinderSyncExt: FIFinderSync {
         return errno == EPERM
     }
 
-    private func cachedMenuIcon(for service: Service, color: NSColor, isDark: Bool) -> NSImage? {
-        let cacheKey = "\(isDark ? "dark" : "light"):\(service.assetName ?? service.symbol)"
+    private func cachedMenuIcon(for service: Service) -> NSImage? {
+        let cacheKey = "round:\(service.id):\(service.assetName ?? service.symbol)"
         if let cached = iconCache[cacheKey] {
             return cached
         }
-        guard let image = menuIcon(for: service, color: color) else {
+        guard let image = menuIcon(for: service) else {
             return nil
         }
         iconCache[cacheKey] = image
         return image
     }
 
-    private func cachedSymbol(_ name: String, color: NSColor, isDark: Bool, glyphSize: CGFloat = 16) -> NSImage? {
-        let cacheKey = "\(isDark ? "dark" : "light"):\(name):\(glyphSize)"
-        if let cached = iconCache[cacheKey] {
-            return cached
-        }
-        guard let image = tintedSymbol(name, color: color, glyphSize: glyphSize) else {
-            return nil
-        }
-        iconCache[cacheKey] = image
-        return image
-    }
-
-    private func menuIcon(for service: Service, color: NSColor) -> NSImage? {
-        if let assetName = service.assetName,
-           let image = tintedAsset(assetName, color: color) {
-            return image
-        }
-        return tintedSymbol(service.symbol, color: color)
-    }
-
-    private func tintedAsset(_ name: String, color: NSColor) -> NSImage? {
-        guard let source = NSImage(named: NSImage.Name(name)) else {
-            return nil
-        }
-        let size = NSSize(width: 16, height: 16)
+    private func menuIcon(for service: Service) -> NSImage? {
+        let colors = menuIconColors(for: service.id)
+        let size = Self.menuIconSize
         return NSImage(size: size, flipped: false) { rect in
-            source.draw(in: rect)
-            color.set()
-            rect.fill(using: .sourceAtop)
+            NSGraphicsContext.current?.imageInterpolation = .high
+            let circleRect = rect.insetBy(dx: 1, dy: 1)
+            let circlePath = NSBezierPath(ovalIn: circleRect)
+            if let gradient = NSGradient(colors: colors) {
+                gradient.draw(in: circlePath, angle: -45)
+            } else {
+                colors.first?.setFill()
+                circlePath.fill()
+            }
+
+            if let assetName = service.assetName,
+               let source = NSImage(named: NSImage.Name(assetName)) {
+                self.drawTemplateImage(source, in: self.glyphRect(for: service, in: rect), on: rect, color: .white)
+            } else if let symbol = NSImage(systemSymbolName: service.symbol, accessibilityDescription: nil) {
+                let configuredSymbol = symbol.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(pointSize: self.symbolPointSize(for: service.id), weight: .semibold)
+                ) ?? symbol
+                self.drawTemplateImage(configuredSymbol, in: self.glyphRect(for: service, in: rect), on: rect, color: .white)
+            }
             return true
         }
     }
 
-    private func tintedSymbol(_ name: String, color: NSColor, glyphSize: CGFloat = 16) -> NSImage? {
-        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
-            return nil
-        }
-        let imageSize = NSSize(width: 16, height: 16)
-        return NSImage(size: imageSize, flipped: false) { rect in
-            let inset = max((rect.width - glyphSize) / 2, 0)
-            let glyphRect = rect.insetBy(dx: inset, dy: inset)
-            symbol.draw(in: glyphRect)
+    private func drawTemplateImage(_ image: NSImage, in rect: NSRect, on canvasRect: NSRect, color: NSColor) {
+        let glyph = NSImage(size: canvasRect.size, flipped: false) { glyphCanvasRect in
+            let sourceRect = NSRect(origin: .zero, size: image.size)
+            image.draw(in: rect, from: sourceRect, operation: .sourceOver, fraction: 1)
             color.set()
-            glyphRect.fill(using: .sourceAtop)
+            glyphCanvasRect.fill(using: .sourceAtop)
             return true
+        }
+        glyph.draw(in: canvasRect, from: NSRect(origin: .zero, size: glyph.size), operation: .sourceOver, fraction: 1)
+    }
+
+    private func glyphRect(for service: Service, in rect: NSRect) -> NSRect {
+        let padding = iconPadding(for: service.id, hasAsset: service.assetName != nil)
+        return rect.insetBy(dx: padding, dy: padding)
+    }
+
+    private func iconPadding(for serviceID: String, hasAsset: Bool) -> CGFloat {
+        switch serviceID {
+        case "new-markdown", "git-commit-push":
+            return 4.2
+        case "copy-path":
+            return 4.5
+        default:
+            return hasAsset ? 4.6 : 4.3
+        }
+    }
+
+    private func symbolPointSize(for serviceID: String) -> CGFloat {
+        switch serviceID {
+        case "copy-path":
+            return 9
+        default:
+            return 9.8
+        }
+    }
+
+    private func menuIconColors(for serviceID: String) -> [NSColor] {
+        switch serviceID {
+        case "new-text":
+            return [
+                NSColor(red: 0.48, green: 0.58, blue: 0.70, alpha: 1),
+                NSColor(red: 0.25, green: 0.34, blue: 0.48, alpha: 1)
+            ]
+        case "new-markdown":
+            return [
+                NSColor(red: 0.20, green: 0.22, blue: 0.26, alpha: 1),
+                NSColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1)
+            ]
+        case "new-word":
+            return [
+                NSColor(red: 0.22, green: 0.46, blue: 0.96, alpha: 1),
+                NSColor(red: 0.07, green: 0.22, blue: 0.68, alpha: 1)
+            ]
+        case "open-ghostty":
+            return [
+                NSColor(red: 0.28, green: 0.26, blue: 0.34, alpha: 1),
+                NSColor(red: 0.10, green: 0.10, blue: 0.14, alpha: 1)
+            ]
+        case "open-vscode":
+            return [
+                NSColor(red: 0.15, green: 0.55, blue: 0.92, alpha: 1),
+                NSColor(red: 0.00, green: 0.32, blue: 0.67, alpha: 1)
+            ]
+        case "git-commit-push":
+            return [
+                NSColor(red: 0.98, green: 0.42, blue: 0.22, alpha: 1),
+                NSColor(red: 0.76, green: 0.18, blue: 0.12, alpha: 1)
+            ]
+        case "copy-path":
+            return [
+                NSColor(red: 0.98, green: 0.50, blue: 0.36, alpha: 1),
+                NSColor(red: 0.83, green: 0.22, blue: 0.18, alpha: 1)
+            ]
+        default:
+            return [
+                NSColor(red: 0.18, green: 0.78, blue: 0.35, alpha: 1),
+                NSColor(red: 0.12, green: 0.64, blue: 0.28, alpha: 1)
+            ]
         }
     }
 

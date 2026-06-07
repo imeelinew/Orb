@@ -26,6 +26,7 @@ struct OrbView: View {
     @State private var inputCorrectionSearchText = ""
     @State private var externalModuleSettings: [String: String] = [:]
     @State private var toast: AppToast?
+    @State private var modulePendingUninstall: OrbModule?
     private let sidebarIconTileSize: Double = 22
     private let sidebarIconSymbolSize: Double = 11
     private let sidebarIconCornerRadius: Double = 6
@@ -214,6 +215,22 @@ struct OrbView: View {
             Button("好") { modelConnectionMessage = nil }
         } message: { message in
             Text(message)
+        }
+        .alert(
+            "确认卸载模块「\(modulePendingUninstall?.name ?? "")」？",
+            isPresented: Binding(
+                get: { modulePendingUninstall != nil },
+                set: { if !$0 { modulePendingUninstall = nil } }
+            ),
+            presenting: modulePendingUninstall
+        ) { module in
+            Button("取消", role: .cancel) {
+                modulePendingUninstall = nil
+            }
+            Button("卸载", role: .destructive) {
+                modulePendingUninstall = nil
+                uninstallModule(module)
+            }
         }
         .background {
             WindowTransparencyConfigurator(enabled: true)
@@ -467,6 +484,7 @@ struct OrbView: View {
 
             Toggle("", isOn: moduleBinding(for: module.id))
                 .labelsHidden()
+                .frame(width: 80, alignment: .trailing)
         }
         .frame(minHeight: 48)
     }
@@ -482,7 +500,7 @@ struct OrbView: View {
 
     private func uninstallModuleButton(_ module: OrbModule) -> some View {
         Button("卸载模块", role: .destructive) {
-            uninstallModule(module)
+            modulePendingUninstall = module
         }
     }
 
@@ -543,10 +561,20 @@ struct OrbView: View {
 
         do {
             let installedModule = try moduleHost.installModule(from: moduleURL)
-            showToast("「\(installedModule.name)」模块已安装")
+            completeModuleInstall(installedModule)
+        } catch OrbModuleInstallError.userModuleAlreadyInstalled(let name) {
+            DispatchQueue.main.async {
+                showToast("「\(name)」模块已安装", kind: .error)
+            }
         } catch {
             NSSound.beep()
             NSLog("[Orb] Failed to install module: \(error)")
+        }
+    }
+
+    private func completeModuleInstall(_ module: OrbModule) {
+        DispatchQueue.main.async {
+            showToast("「\(module.name)」模块已安装")
         }
     }
 
@@ -751,9 +779,9 @@ struct OrbView: View {
         !["false", "0", "no", "off"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
-    private func showToast(_ message: String) {
+    private func showToast(_ message: String, kind: AppToast.Kind = .success) {
         withAnimation(OrbUI.Toast.showAnimation) {
-            toast = AppToast(message: message)
+            toast = AppToast(message: message, kind: kind)
         }
     }
 

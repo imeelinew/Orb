@@ -136,7 +136,7 @@ final class OrbModuleHost: ObservableObject {
     }
 
     @discardableResult
-    func installModule(from sourceURL: URL) throws -> OrbModule {
+    func installModule(from sourceURL: URL, enableAfterInstall: Bool = false) throws -> OrbModule {
         let accessingSecurityScopedResource = sourceURL.startAccessingSecurityScopedResource()
         defer {
             if accessingSecurityScopedResource {
@@ -144,14 +144,8 @@ final class OrbModuleHost: ObservableObject {
             }
         }
 
-        guard let candidate = OrbModuleLoader.loadModule(at: sourceURL, source: .user) else {
+        guard OrbModuleLoader.loadModule(at: sourceURL, source: .user) != nil else {
             throw OrbModuleInstallError.invalidPackage(sourceURL)
-        }
-
-        let existingModule = module(withID: candidate.id)
-        let shouldReenable = existingModule?.source == .user && isEnabled(candidate.id)
-        if shouldReenable {
-            setEnabled(false, for: candidate.id)
         }
 
         let installed = try OrbModuleInstaller.installPackage(
@@ -159,13 +153,12 @@ final class OrbModuleHost: ObservableObject {
             into: userModulesDirectoryURL,
             existingModules: modules
         )
+        if enableAfterInstall {
+            UserDefaults.standard.set(true, forKey: enabledDefaultsKey(for: installed.id))
+        }
         reloadModules()
 
-        if shouldReenable {
-            setEnabled(true, for: installed.id)
-        } else {
-            startEnabledExecutableModules()
-        }
+        startEnabledExecutableModules()
 
         return module(withID: installed.id) ?? installed
     }
@@ -360,6 +353,7 @@ final class OrbModuleHost: ObservableObject {
 enum OrbModuleInstallError: Error, Equatable {
     case invalidPackage(URL)
     case bundledModuleID(String)
+    case userModuleAlreadyInstalled(String)
 }
 
 enum OrbModuleInstaller {
@@ -380,11 +374,8 @@ enum OrbModuleInstaller {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: installDirectoryURL, withIntermediateDirectories: true)
 
-        if let existingUserModule = existingModules.first(where: { $0.id == candidate.id && $0.source == .user }) {
-            if sameFile(sourceURL, existingUserModule.packageURL) {
-                return existingUserModule
-            }
-            try? fileManager.removeItem(at: existingUserModule.packageURL)
+        if existingModules.contains(where: { $0.id == candidate.id && $0.source == .user }) {
+            throw OrbModuleInstallError.userModuleAlreadyInstalled(candidate.name)
         }
 
         let destinationURL = uniqueDestinationURL(

@@ -141,6 +141,28 @@ struct OrbModuleTests {
         }
     }
 
+    @Test func installerRejectsModulesThatDuplicateUserIDs() throws {
+        let sourceURL = try makeTemporaryExecutableModule()
+        let installDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let userModule = try #require(OrbModuleLoader.loadModule(at: sourceURL, source: .user))
+        defer {
+            try? FileManager.default.removeItem(at: sourceURL.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: installDirectoryURL)
+        }
+
+        do {
+            _ = try OrbModuleInstaller.installPackage(
+                from: sourceURL,
+                into: installDirectoryURL,
+                existingModules: [userModule]
+            )
+            Issue.record("Expected user duplicate module id to be rejected")
+        } catch let error as OrbModuleInstallError {
+            #expect(error == .userModuleAlreadyInstalled(userModule.name))
+        }
+    }
+
     @Test func moduleDevelopmentOutputDefaultsToOrbModulesFolder() throws {
         let outputURL = OrbModuleDevelopmentOutput.directoryURL()
 
