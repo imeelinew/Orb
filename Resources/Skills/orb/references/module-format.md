@@ -50,6 +50,7 @@ Minimal executable module:
     {
       "id": "open",
       "name": "Open",
+      "desc": "Open the configured application.",
       "kind": "action",
       "command": "open"
     }
@@ -58,7 +59,8 @@ Minimal executable module:
     {
       "key": "appName",
       "title": "App Name",
-      "kind": "string",
+      "desc": "Application name shown in the command row.",
+      "type": "string",
       "defaultValue": "Visual Studio Code"
     }
   ]
@@ -78,8 +80,8 @@ Minimal executable module:
 - `defaultEnabled` should usually be `false` for distributed third-party modules.
 - `displayOrder` controls ordering after built-in modules.
 - `permissions` should be honest but concise.
-- `capabilities` define callable actions Orb can expose.
-- `settings` define simple user-editable values Orb can store and pass through the executable protocol.
+- `capabilities` define callable actions Orb can expose. Each capability item should include a concise `desc` when the action name alone is not self-explanatory.
+- `settings` define simple user-editable values Orb can store and pass through the executable protocol. Each setting item may include a concise `desc`, which Orb shows under the setting title in the module detail view.
 - Use `type: "command"` for command reminders that should render as toggle rows in a module detail view, for example `orb cursor`.
 - Do not use normal module detail UI for debug metadata such as executable status strings or package paths. Keep those for logs or diagnostics.
 

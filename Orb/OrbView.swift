@@ -657,12 +657,30 @@ struct OrbView: View {
     @ViewBuilder
     private func externalModuleSettingRow(moduleID: String, setting: OrbModuleSetting) -> some View {
         if isToggleSetting(setting) {
-            Toggle(setting.title, isOn: externalModuleToggleSettingBinding(moduleID: moduleID, setting: setting))
+            Toggle(isOn: externalModuleToggleSettingBinding(moduleID: moduleID, setting: setting)) {
+                externalModuleSettingLabel(setting)
+            }
         } else {
-            TextField(setting.title, text: externalModuleSettingBinding(moduleID: moduleID, setting: setting))
-                .onSubmit {
-                    saveExternalModuleSetting(moduleID: moduleID, setting: setting)
-                }
+            LabeledContent {
+                TextField("", text: externalModuleSettingBinding(moduleID: moduleID, setting: setting))
+                    .labelsHidden()
+                    .onSubmit {
+                        saveExternalModuleSetting(moduleID: moduleID, setting: setting)
+                    }
+            } label: {
+                externalModuleSettingLabel(setting)
+            }
+        }
+    }
+
+    private func externalModuleSettingLabel(_ setting: OrbModuleSetting) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(setting.title)
+            if let desc = setting.desc?.trimmingCharacters(in: .whitespacesAndNewlines), !desc.isEmpty {
+                Text(desc)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

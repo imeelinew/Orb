@@ -16,7 +16,8 @@ FeatureName.orbmodule/
 
 - `manifestVersion` must be `1`.
 - `id` must be globally unique, reverse-DNS style.
-- `name` and `desc` are the only user-facing text Orb needs for the module list.
+- `name` and `desc` are the user-facing text Orb needs for the module list.
+- Each capability or setting item may include its own concise `desc`; Orb shows setting descriptions under the item title in the module detail view.
 - `icon.symbol` is an SF Symbol name.
 - `icon.gradient` contains two hex colors.
 - `runtime.kind` is `executable` for third-party modules.
@@ -32,7 +33,7 @@ bin/main start
 bin/main stop
 bin/main status
 bin/main action <command>
-bin/main settings get
+bin/main settings get <key>
 bin/main settings set <key> <value>
 ```
 

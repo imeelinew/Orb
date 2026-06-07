@@ -24,6 +24,7 @@ struct OrbModuleTests {
 
         #expect(module.descriptor.runtime.kind == .executable)
         #expect(module.descriptor.runtime.executable == "bin/main")
+        #expect(module.descriptor.settings.first?.desc == "The app opened by this module.")
         #expect(FileManager.default.isExecutableFile(
             atPath: moduleURL.appendingPathComponent("bin/main").path
         ))
@@ -179,11 +180,19 @@ struct OrbModuleTests {
           },
           "defaultEnabled": false,
           "permissions": ["automation"],
-          "capabilities": [],
+          "capabilities": [
+            {
+              "id": "open",
+              "name": "Open",
+              "desc": "Open the configured app.",
+              "command": "open"
+            }
+          ],
           "settings": [
             {
               "key": "appName",
               "title": "App Name",
+              "desc": "The app opened by this module.",
               "type": "string",
               "defaultValue": "Visual Studio Code"
             }

@@ -77,7 +77,8 @@ Use this skill for Orb app work and Orb module development. Treat the live repos
 - If the user has not explicitly provided the Orb-visible case name, ask: `你想给这个模块显示什么名字？` This asks for the case name shown in Orb, not the package filename.
 - Use an ASCII technical package directory name, for example `CommandLine.orbmodule`. Do not use Chinese or other localized display text in the package directory name.
 - Store the user-approved case name in manifest `name`. The manifest `name` may be localized, and it does not need to match the package directory name.
-- Use module settings or capabilities to surface memorable user actions. For example, a command-line module should show entries such as `orb cursor` and `orb vscode` directly in Orb instead of hiding them only in description text.
+- Use module settings or capabilities to surface memorable user actions. Each user-facing item can include a concise manifest `desc`; Orb shows setting descriptions under the item title in the module detail view.
+- For example, a command-line module should show entries such as `orb cursor` and `orb vscode` directly in Orb, with per-item `desc` values when the command name needs context.
 - Use reverse-DNS IDs, for example `com.example.orb.open-vscode`.
 - Write finished module packages under `$HOME/Documents/`, for example `~/Documents/CommandLine.orbmodule`.
 - In the final response, state the exact module path.

@@ -48,6 +48,7 @@ struct OrbModuleCapability: Codable, Identifiable, Hashable {
 struct OrbModuleSetting: Codable, Identifiable, Hashable {
     let key: String
     let title: String
+    let desc: String?
     let type: String
     let defaultValue: String?
 
