@@ -163,9 +163,7 @@ struct OrbView: View {
                 if !enabledUserModules.isEmpty {
                     Section("自定义模块") {
                         ForEach(enabledUserModules) { module in
-                            NavigationLink(value: SettingsPage.module(module.id)) {
-                                SidebarModuleLabel(module: module)
-                            }
+                            userModuleSidebarLink(module)
                         }
                     }
                 }
@@ -282,12 +280,7 @@ struct OrbView: View {
                 if !filteredUserModuleItems.isEmpty {
                     Section("自定义模块") {
                         ForEach(filteredUserModuleItems) { module in
-                            moduleListRow(module)
-                                .contextMenu {
-                                    Button("卸载模块", role: .destructive) {
-                                        uninstallModule(module)
-                                    }
-                                }
+                            userModuleListRow(module)
                         }
                     }
                 }
@@ -446,19 +439,51 @@ struct OrbView: View {
     }
 
     private func moduleListRow(_ module: OrbModule) -> some View {
-        Toggle(isOn: moduleBinding(for: module.id)) {
-            HStack(spacing: 12) {
-                ModuleIconTile(icon: module.icon)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(module.name)
-                    Text(module.desc)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+        moduleListRowContent(module)
+            .padding(.horizontal, 10)
+    }
+
+    private func userModuleListRow(_ module: OrbModule) -> some View {
+        moduleListRowContent(module)
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
+            .contextMenu {
+                uninstallModuleButton(module)
             }
-            .frame(minHeight: 48)
+    }
+
+    private func moduleListRowContent(_ module: OrbModule) -> some View {
+        HStack(spacing: 12) {
+            ModuleIconTile(icon: module.icon)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(module.name)
+                Text(module.desc)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            Toggle("", isOn: moduleBinding(for: module.id))
+                .labelsHidden()
         }
-        .padding(.horizontal, 10)
+        .frame(minHeight: 48)
+    }
+
+    private func userModuleSidebarLink(_ module: OrbModule) -> some View {
+        NavigationLink(value: SettingsPage.module(module.id)) {
+            SidebarModuleLabel(module: module)
+        }
+        .contextMenu {
+            uninstallModuleButton(module)
+        }
+    }
+
+    private func uninstallModuleButton(_ module: OrbModule) -> some View {
+        Button("卸载模块", role: .destructive) {
+            uninstallModule(module)
+        }
     }
 
     private func binding(for action: MenuAction) -> Binding<Bool> {
