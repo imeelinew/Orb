@@ -111,6 +111,64 @@ Environment variables:
 
 - `ORB_MODULE_ID`
 - `ORB_MODULE_PATH`
+- `ORB_MODULE_ICON_SYMBOL` — SF Symbol name from the module manifest `icon.symbol`
+- `ORB_MODULE_ICON_GRADIENT` — JSON array of hex color strings from the module manifest `icon.gradient`
+- `ORB_POPOVER_EVENT_FILE` — path to a file that triggers a menu bar popover when written to. The file is watched by Orb; write the notification format below to show a popover from the menu bar icon.
+
+### Menu Bar Popover
+
+Modules can show a notification popover from the Orb menu bar icon by writing to the file at `ORB_POPOVER_EVENT_FILE`. The popover auto-dismisses after 5 seconds.
+
+Minimal format (4 lines):
+
+```
+<kind>
+<actionID>
+<title>
+<subtitle>
+```
+
+Full format with module icon (7 lines):
+
+```
+<kind>
+<actionID>
+<title>
+<subtitle>
+<iconSymbol>
+<gradientStartHex>
+<gradientEndHex>
+```
+
+- `kind`: `success` or `error`
+- `actionID`: short identifier for the action (e.g. `copypath`)
+- `title`: main title text
+- `subtitle`: detail text
+- `iconSymbol`: SF Symbol name (from `ORB_MODULE_ICON_SYMBOL`)
+- `gradientStartHex`: start color of the circular icon gradient (from `ORB_MODULE_ICON_GRADIENT` array)
+- `gradientEndHex`: end color of the circular icon gradient (from `ORB_MODULE_ICON_GRADIENT` array)
+
+When `ORB_POPOVER_EVENT_FILE` is not set (e.g. when running outside Orb), the well-known fallback path is:
+
+```
+~/Library/Application Scripts/com.eli.Orb.FinderSync/popover-event.txt
+```
+
+Example usage in a module script:
+
+```sh
+popover_file="${ORB_POPOVER_EVENT_FILE:-$HOME/Library/Application Scripts/com.eli.Orb.FinderSync/popover-event.txt}"
+if [ -d "$(dirname "$popover_file")" ]; then
+  icon_symbol="${ORB_MODULE_ICON_SYMBOL:-questionmark}"
+  gradient_json="${ORB_MODULE_ICON_GRADIENT:-[\"#4F8BFF\",\"#7C5CFF\"]}"
+  gradient_start=$(printf '%s' "$gradient_json" | python3 -c "import sys,json;print(json.load(sys.stdin)[0])" 2>/dev/null || echo "#4F8BFF")
+  gradient_end=$(printf '%s' "$gradient_json" | python3 -c "import sys,json;print(json.load(sys.stdin)[1])" 2>/dev/null || echo "#7C5CFF")
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    "success" "myaction" "My Module" "Done: $result" \
+    "$icon_symbol" "$gradient_start" "$gradient_end" \
+    > "$popover_file"
+fi
+```
 
 ## Installation
 

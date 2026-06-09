@@ -727,7 +727,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if actionID == "stop-subtitles", kind == .success {
             clearSubtitleMenuBarProgress()
         }
-        showMenuBarPopover(title: title, subtitle: subtitle, actionID: actionID, kind: kind)
+        var iconSymbol: String? = nil
+        var iconGradient: LinearGradient? = nil
+        if lines.count >= 7 {
+            iconSymbol = lines[4]
+            if let start = Color(hex: lines[5]),
+               let end = Color(hex: lines[6]) {
+                iconGradient = LinearGradient(
+                    colors: [start, end],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
+        showMenuBarPopover(
+            title: title,
+            subtitle: subtitle,
+            actionID: actionID,
+            kind: kind,
+            iconSymbol: iconSymbol,
+            iconGradient: iconGradient
+        )
     }
 
     private func menuBarProgressFraction(from rawProgress: Double, actionID: String) -> Double {
@@ -806,7 +826,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         kind: MenuBarNotificationView.Kind,
         progress: MenuBarNotificationView.ProgressState? = nil,
         mode: MenuBarPopoverMode = .notification,
-        autoDismiss: Bool? = nil
+        autoDismiss: Bool? = nil,
+        iconSymbol: String? = nil,
+        iconGradient: LinearGradient? = nil
     ) {
         guard let button = statusItem.button else { return }
 
@@ -824,7 +846,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 subtitle: subtitle,
                 actionID: actionID,
                 kind: kind,
-                progress: progress
+                progress: progress,
+                iconSymbol: iconSymbol,
+                iconGradient: iconGradient
             )
             resizeMenuBarPopover(popover, hosting: hosting)
             return
@@ -839,7 +863,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 subtitle: subtitle,
                 actionID: actionID,
                 kind: kind,
-                progress: progress
+                progress: progress,
+                iconSymbol: iconSymbol,
+                iconGradient: iconGradient
             )
         )
 
@@ -985,5 +1011,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func quit() {
         disableFinderExtensionForTermination()
         NSApp.terminate(nil)
+    }
+}
+
+private extension Color {
+    init?(hex: String) {
+        let normalized = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard normalized.count == 6,
+              let value = UInt64(normalized, radix: 16) else {
+            return nil
+        }
+        let red = Double((value & 0xFF0000) >> 16) / 255
+        let green = Double((value & 0x00FF00) >> 8) / 255
+        let blue = Double(value & 0x0000FF) / 255
+        self.init(red: red, green: green, blue: blue)
     }
 }

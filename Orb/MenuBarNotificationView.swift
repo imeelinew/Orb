@@ -7,6 +7,8 @@ struct MenuBarNotificationView: View {
     let actionID: String
     let kind: Kind
     let progress: ProgressState?
+    let iconSymbolOverride: String?
+    let iconGradientOverride: LinearGradient?
 
     enum Kind {
         case success
@@ -23,16 +25,21 @@ struct MenuBarNotificationView: View {
         subtitle: String,
         actionID: String,
         kind: Kind,
-        progress: ProgressState? = nil
+        progress: ProgressState? = nil,
+        iconSymbol: String? = nil,
+        iconGradient: LinearGradient? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
         self.actionID = actionID
         self.kind = kind
         self.progress = progress
+        self.iconSymbolOverride = iconSymbol
+        self.iconGradientOverride = iconGradient
     }
 
     private var iconAssetName: String? {
+        guard iconSymbolOverride == nil else { return nil }
         switch actionID {
         case "new-markdown":
             return "logo-markdown"
@@ -48,6 +55,9 @@ struct MenuBarNotificationView: View {
     }
 
     private var iconName: String {
+        if let iconSymbolOverride {
+            return iconSymbolOverride
+        }
         switch actionID {
         case "subtitles", "remove-subtitles":
             return "captions.bubble"
@@ -73,6 +83,9 @@ struct MenuBarNotificationView: View {
     }
 
     private var iconGradient: LinearGradient {
+        if let iconGradientOverride {
+            return iconGradientOverride
+        }
         if kind == .error {
             return LinearGradient(
                 colors: [

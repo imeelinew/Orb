@@ -319,7 +319,10 @@ final class OrbModuleHost: ObservableObject {
         process.environment = ProcessInfo.processInfo.environment.merging(
             [
                 "ORB_MODULE_ID": module.id,
-                "ORB_MODULE_PATH": module.packageURL.path
+                "ORB_MODULE_PATH": module.packageURL.path,
+                "ORB_POPOVER_EVENT_FILE": OrbModuleHost.popoverEventFilePath,
+                "ORB_MODULE_ICON_SYMBOL": module.descriptor.icon.symbol,
+                "ORB_MODULE_ICON_GRADIENT": OrbModuleHost.encodeIconGradient(module.descriptor.icon.gradient)
             ],
             uniquingKeysWith: { _, newValue in newValue }
         )
@@ -347,6 +350,21 @@ final class OrbModuleHost: ObservableObject {
 
     private func enabledDefaultsKey(for moduleID: String) -> String {
         "orbModuleEnabled.\(moduleID)"
+    }
+
+    static var popoverEventFilePath: String {
+        guard let mainBundleID = Bundle.main.bundleIdentifier else {
+            return ""
+        }
+        let scriptsDir = FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Scripts/\(mainBundleID).FinderSync")
+        return scriptsDir.appendingPathComponent("popover-event.txt").path
+    }
+
+    static func encodeIconGradient(_ gradient: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(gradient) else { return "[]" }
+        return String(data: data, encoding: .utf8) ?? "[]"
     }
 }
 
