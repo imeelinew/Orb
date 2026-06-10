@@ -5,47 +5,55 @@ import Testing
 struct SubtitlePostProcessingTests {
 
     @Test func normalizeSrtDropsWhisperPhraseLoops() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let scriptURL = repoRoot.appendingPathComponent("Resources/Scripts/gen_subtitles.sh")
-        let script = try String(contentsOf: scriptURL, encoding: .utf8)
+        let script = try subtitleScript()
         let python = try normalizeSrtPython(from: script)
 
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let srtURL = directory.appendingPathComponent("loop.srt")
-        try whisperLoopFixture.write(to: srtURL, atomically: true, encoding: .utf8)
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = ["-", srtURL.path, "en"]
-
-        let input = Pipe()
-        let output = Pipe()
-        let error = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = error
-
-        try process.run()
-        input.fileHandleForWriting.write(Data(python.utf8))
-        input.fileHandleForWriting.closeFile()
-        process.waitUntilExit()
-
-        let stderr = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        #expect(process.terminationStatus == 0, "normalize_srt failed: \(stderr)")
-
-        let normalized = try String(contentsOf: srtURL, encoding: .utf8)
+        let normalized = try normalize(
+            fixture: whisperLoopFixture,
+            language: "en",
+            python: python
+        )
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
         let occurrences = normalized
             .components(separatedBy: "Why don't you study my Chinese")
             .count - 1
         #expect(occurrences == 1)
         #expect(!normalized.contains("Why don't you study my Chinese She said"))
+    }
+
+    @Test func normalizeSrtDropsMultilingualWhisperLoops() throws {
+        let python = try normalizeSrtPython(from: subtitleScript())
+
+        let chinese = try normalize(
+            fixture: repeatedCueFixture(text: "我会觉得这个到底是什么东西"),
+            language: "zh",
+            python: python
+        )
+        let japanese = try normalize(
+            fixture: repeatedTextFixture(text: "音が聞こえたので確認してください"),
+            language: "ja",
+            python: python
+        )
+        let korean = try normalize(
+            fixture: repeatedCueFixture(text: "이것은 계속 반복되는 긴 자막 문장입니다"),
+            language: "ko",
+            python: python
+        )
+
+        #expect(chinese.components(separatedBy: "我会觉得这个到底是什么东西").count - 1 == 1)
+        #expect(japanese.components(separatedBy: "音が聞こえたので確認してください").count - 1 == 1)
+        #expect(korean.components(separatedBy: "이것은 계속 반복되는 긴 자막 문장입니다").count - 1 == 1)
+    }
+
+    @Test func normalizeSrtKeepsShortIntentionalRepetitions() throws {
+        let python = try normalizeSrtPython(from: subtitleScript())
+        let normalized = try normalize(
+            fixture: repeatedCueFixture(text: "睡觉"),
+            language: "zh",
+            python: python
+        )
+
+        #expect(normalized.components(separatedBy: "睡觉").count - 1 == 4)
     }
 
     @Test func fixedWhisperLanguageDoesNotFallBackToEnglish() throws {
@@ -150,6 +158,32 @@ struct SubtitlePostProcessingTests {
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
+    private func normalize(fixture: String, language: String, python: String) throws -> String {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let srtURL = directory.appendingPathComponent("fixture.srt")
+        try fixture.write(to: srtURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = ["-", srtURL.path, language]
+
+        let input = Pipe()
+        let error = Pipe()
+        process.standardInput = input
+        process.standardError = error
+
+        try process.run()
+        input.fileHandleForWriting.write(Data(python.utf8))
+        input.fileHandleForWriting.closeFile()
+        process.waitUntilExit()
+
+        let stderr = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        #expect(process.terminationStatus == 0, "normalize_srt failed: \(stderr)")
+        return try String(contentsOf: srtURL, encoding: .utf8)
+    }
+
     private func normalizeSrtPython(from script: String) throws -> String {
         guard let functionRange = script.range(of: "normalize_srt() {") else {
             throw ExtractionError.missingNormalizeFunction
@@ -196,6 +230,25 @@ struct SubtitlePostProcessingTests {
         5
         00:10:35,520 --> 00:10:39,520
         She said, "Why don't you study my Chinese
+
+        """
+    }
+
+    private func repeatedCueFixture(text: String) -> String {
+        (1...4).map { index in
+            """
+            \(index)
+            00:00:0\(index - 1),000 --> 00:00:0\(index),000
+            \(text)
+            """
+        }.joined(separator: "\n\n") + "\n"
+    }
+
+    private func repeatedTextFixture(text: String) -> String {
+        """
+        1
+        00:00:00,000 --> 00:00:04,000
+        \(text)\(text)
 
         """
     }

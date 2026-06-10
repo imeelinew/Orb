@@ -871,7 +871,12 @@ MAX_CUE_MS = 5000
 MIN_CUE_MS = 900
 SHORT_CUE_JOIN_GAP_MS = 500
 NO_LINE_START = set("，。！？；：、,.!?;:%)]}》」』”’")
-TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[\u4e00-\u9fff]")
+TOKEN_RE = re.compile(
+    r"[A-Za-zÀ-ÖØ-öø-ÿĀ-ɏ0-9]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿĀ-ɏ0-9]+)?"
+    r"|[\u0400-\u052f]+"
+    r"|[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]"
+)
+CJK_TOKEN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 WEAK_END_WORDS = {
     "a", "an", "the", "to", "for", "of", "in", "on", "at", "with", "from", "by",
     "and", "or", "but", "so", "because", "if", "when", "while", "as", "than",
@@ -1001,7 +1006,7 @@ def repetition_key(text):
     )
 
 def collapse_repeated_phrase_text(text):
-    min_repeated_tokens = 5
+    min_repeated_tokens = 8 if CJK_TOKEN_RE.search(text) else 5
     changed = True
     while changed:
         changed = False
@@ -1215,9 +1220,9 @@ with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
 blocks = parse_blocks(source)
 if not blocks:
     sys.exit(0)
+blocks = [(start, end, collapse_repeated_phrase_text(text)) for start, end, text in blocks]
+blocks = remove_repeated_phrase_runs(blocks)
 if english_like:
-    blocks = [(start, end, collapse_repeated_phrase_text(text)) for start, end, text in blocks]
-    blocks = remove_repeated_phrase_runs(blocks)
     blocks = merge_short_cues(blocks)
 
 out = []
