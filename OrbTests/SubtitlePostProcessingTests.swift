@@ -202,7 +202,7 @@ struct SubtitlePostProcessingTests {
         #expect(resolved == "zh")
     }
 
-    @Test func unsupportedWhisperLanguageFallsBackToEnglish() throws {
+    @Test func automaticWhisperLanguageUsesDetectedSupportedLanguage() throws {
         let script = try subtitleScript()
         let shell = try languageResolutionShell(from: script)
         let directory = try temporaryDirectory()
@@ -210,6 +210,24 @@ struct SubtitlePostProcessingTests {
 
         let logURL = directory.appendingPathComponent("whisper.log")
         try "whisper_full_with_state: auto-detected language: ja (p = 0.99)\n"
+            .write(to: logURL, atomically: true, encoding: .utf8)
+
+        let resolved = try runZsh(
+            shell + "\nresolve_whisper_language \"$1\" \"$2\"",
+            arguments: [logURL.path, "auto"]
+        )
+
+        #expect(resolved == "ja")
+    }
+
+    @Test func automaticWhisperLanguageFallsBackToEnglishForUnsupportedDetection() throws {
+        let script = try subtitleScript()
+        let shell = try languageResolutionShell(from: script)
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let logURL = directory.appendingPathComponent("whisper.log")
+        try "whisper_full_with_state: auto-detected language: fr (p = 0.99)\n"
             .write(to: logURL, atomically: true, encoding: .utf8)
 
         let resolved = try runZsh(
@@ -240,12 +258,13 @@ struct SubtitlePostProcessingTests {
     @Test func subtitleLanguageSelectionOnlySupportsChineseEnglishKoreanJapanese() {
         #expect(
             SubtitleConfiguration.supportedWhisperLanguages.map(\.code)
-                == ["zh", "en", "ko", "ja"]
+                == ["auto", "zh", "en", "ko", "ja"]
         )
+        #expect(SubtitleConfiguration.supportedWhisperLanguages.first?.displayName == "自动识别")
+        #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: "auto") == "auto")
         #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: "zh") == "zh")
-        #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: "auto") == "en")
-        #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: "fr") == "en")
-        #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: nil) == "en")
+        #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: "fr") == "auto")
+        #expect(SubtitleConfiguration.resolvedWhisperLanguage(storedValue: nil) == "auto")
     }
 
     @Test func subtitleScriptRejectsUnsupportedConfiguredLanguages() throws {
@@ -255,21 +274,21 @@ struct SubtitlePostProcessingTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let configURL = directory.appendingPathComponent("subtitle-config.json")
-        for language in ["zh", "en", "ko", "ja"] {
+        for language in ["auto", "zh", "en", "ko", "ja"] {
             try #"{"whisperLang":"\#(language)"}"#
                 .write(to: configURL, atomically: true, encoding: .utf8)
             let supported = try runPython(python, arguments: [configURL.path])
             #expect(supported.contains("WHISPER_LANG=\(language)"))
         }
 
-        for language in ["auto", "fr"] {
+        for language in ["fr"] {
             try #"{"whisperLang":"\#(language)"}"#
                 .write(to: configURL, atomically: true, encoding: .utf8)
             let unsupported = try runPython(python, arguments: [configURL.path])
-            #expect(unsupported.contains("WHISPER_LANG=en"))
+            #expect(unsupported.contains("WHISPER_LANG=auto"))
         }
 
-        #expect(script.contains(#"WHISPER_LANG="en""#))
+        #expect(script.contains(#"WHISPER_LANG="auto""#))
     }
 
     private func subtitleScript() throws -> String {

@@ -10,7 +10,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 . "$(dirname "$0")/orb_popover.sh"
 
 MODEL="$HOME/whisper-models/ggml-large-v3-turbo.bin"
-WHISPER_LANG="en"
+WHISPER_LANG="auto"
 WHISPER_MODEL_SLOT_COUNT=1
 LLM_SEGMENTATION_ENABLED=1
 LLM_OPENROUTER_API_KEY=""
@@ -29,9 +29,9 @@ try:
     with open(sys.argv[1]) as f:
         cfg = json.load(f)
     model_file = cfg.get("whisperModel", "ggml-large-v3-turbo.bin")
-    lang = cfg.get("whisperLang", "en")
-    if lang not in {"zh", "en", "ko", "ja"}:
-        lang = "en"
+    lang = cfg.get("whisperLang", "auto")
+    if lang not in {"auto", "zh", "en", "ko", "ja"}:
+        lang = "auto"
     seg = 1 if cfg.get("llmSegmentationEnabled", True) else 0
     trans = 1 if cfg.get("llmTranslationEnabled", True) else 0
     llm_model = cfg.get("llmModel", "mimo-v2.5")
@@ -316,9 +316,39 @@ PY
 
 resolve_whisper_language() {
     local _log_path="$1"
-    local configured_language="${2:-en}"
+    local configured_language="${2:-auto}"
     case "$configured_language" in
         zh|en|ko|ja) printf "%s" "$configured_language" ;;
+        auto)
+            [ -s "$_log_path" ] || {
+                printf "en"
+                return 0
+            }
+            /usr/bin/python3 - "$_log_path" <<'PY'
+import re
+import sys
+
+aliases = {
+    "chinese": "zh",
+    "mandarin": "zh",
+    "english": "en",
+    "korean": "ko",
+    "japanese": "ja",
+}
+supported = {"zh", "en", "ko", "ja"}
+language = "en"
+pattern = re.compile(r"auto-detected language:\s*([A-Za-z_-]+)", re.IGNORECASE)
+with open(sys.argv[1], "r", encoding="utf-8", errors="ignore") as f:
+    for line in f:
+        match = pattern.search(line)
+        if not match:
+            continue
+        raw = re.split(r"[-_]", match.group(1), 1)[0].lower()
+        candidate = aliases.get(raw, raw)
+        language = candidate if candidate in supported else "en"
+print(language)
+PY
+            ;;
         *) printf "en" ;;
     esac
 }

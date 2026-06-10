@@ -245,7 +245,7 @@ enum SubtitleConfiguration {
 
     static let configFilename = "subtitle-config.json"
 
-    static let defaultWhisperLang = "en"
+    static let defaultWhisperLang = "auto"
     static let defaultWhisperModel = "ggml-large-v3-turbo.bin"
     static let defaultLLMSegmentationEnabled = true
     static let defaultLLMTranslationEnabled = true
@@ -253,6 +253,7 @@ enum SubtitleConfiguration {
     static let defaultLLMBaseURL = "https://opencode.ai/zen/go/v1/chat/completions"
 
     static let supportedWhisperLanguages = [
+        WhisperLanguageOption(code: "auto", displayName: "自动识别"),
         WhisperLanguageOption(code: "zh", displayName: "中文"),
         WhisperLanguageOption(code: "en", displayName: "英语"),
         WhisperLanguageOption(code: "ko", displayName: "韩语"),
