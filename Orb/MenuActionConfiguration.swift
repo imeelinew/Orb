@@ -222,6 +222,13 @@ enum InputCorrectionConfiguration {
 }
 
 enum SubtitleConfiguration {
+    struct WhisperModelOption: Identifiable, Equatable {
+        let filename: String
+        let displayName: String
+
+        var id: String { filename }
+    }
+
     static let whisperLangKey = "subtitleWhisperLang"
     static let whisperModelKey = "subtitleWhisperModel"
     static let llmSegmentationEnabledKey = "subtitleLLMSegmentationEnabled"
@@ -238,6 +245,43 @@ enum SubtitleConfiguration {
     static let defaultLLMModel = "mimo-v2.5"
     static let defaultLLMBaseURL = "https://opencode.ai/zen/go/v1/chat/completions"
 
+    static let supportedWhisperModels = [
+        WhisperModelOption(filename: "ggml-large-v3-turbo.bin", displayName: "large-v3-turbo"),
+        WhisperModelOption(filename: "ggml-large-v3.bin", displayName: "large-v3"),
+        WhisperModelOption(filename: "ggml-medium.bin", displayName: "medium"),
+        WhisperModelOption(filename: "ggml-small.bin", displayName: "small")
+    ]
+
+    static func whisperModelsDirectory() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("whisper-models", isDirectory: true)
+    }
+
+    static func availableWhisperModels(
+        in modelsDirectory: URL = whisperModelsDirectory()
+    ) -> [WhisperModelOption] {
+        supportedWhisperModels.filter { model in
+            FileManager.default.fileExists(
+                atPath: modelsDirectory.appendingPathComponent(model.filename).path
+            )
+        }
+    }
+
+    static func resolvedWhisperModel(
+        storedValue: String?,
+        modelsDirectory: URL = whisperModelsDirectory()
+    ) -> String {
+        let available = availableWhisperModels(in: modelsDirectory)
+        if let storedValue,
+           available.contains(where: { $0.filename == storedValue }) {
+            return storedValue
+        }
+        if available.contains(where: { $0.filename == defaultWhisperModel }) {
+            return defaultWhisperModel
+        }
+        return available.first?.filename ?? defaultWhisperModel
+    }
+
     static func whisperLang() -> String {
         UserDefaults.standard.string(forKey: whisperLangKey) ?? defaultWhisperLang
     }
@@ -247,7 +291,9 @@ enum SubtitleConfiguration {
     }
 
     static func whisperModel() -> String {
-        UserDefaults.standard.string(forKey: whisperModelKey) ?? defaultWhisperModel
+        resolvedWhisperModel(
+            storedValue: UserDefaults.standard.string(forKey: whisperModelKey)
+        )
     }
 
     static func setWhisperModel(_ value: String) {

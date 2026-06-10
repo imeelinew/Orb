@@ -344,11 +344,15 @@ struct OrbView: View {
                     }
 
                     LabeledContent {
-                        Picker("", selection: subtitleWhisperModelBinding) {
-                            Text("large-v3-turbo").tag("ggml-large-v3-turbo.bin")
-                            Text("large-v3").tag("ggml-large-v3.bin")
-                            Text("medium").tag("ggml-medium.bin")
-                            Text("small").tag("ggml-small.bin")
+                        if subtitleWhisperModels.isEmpty {
+                            Text("未安装模型")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("", selection: subtitleWhisperModelBinding) {
+                                ForEach(subtitleWhisperModels) { model in
+                                    Text(model.displayName).tag(model.filename)
+                                }
+                            }
                         }
                     } label: {
                         Text("Whisper 模型")
@@ -742,6 +746,10 @@ struct OrbView: View {
                 scheduleSubtitleConfigWrite()
             }
         )
+    }
+
+    private var subtitleWhisperModels: [SubtitleConfiguration.WhisperModelOption] {
+        SubtitleConfiguration.availableWhisperModels()
     }
 
     private var subtitleLLMSegmentationBinding: Binding<Bool> {

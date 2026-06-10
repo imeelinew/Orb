@@ -334,6 +334,16 @@ print(language)
 PY
 }
 
+resolve_whisper_language() {
+    local log_path="$1"
+    local configured_language="${2:-auto}"
+    if [ -n "$configured_language" ] && [ "$configured_language" != "auto" ]; then
+        printf "%s" "$configured_language"
+        return 0
+    fi
+    parse_whisper_language "$log_path"
+}
+
 smooth_eta_text() {
     local raw_eta="$1"
     local smoothed max_down
@@ -1795,7 +1805,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
         release_whisper_model_slot
 
         if [ "$whisper_status" -eq 0 ]; then
-            detected_lang="$(parse_whisper_language "$whisper_log")"
+            detected_lang="$(resolve_whisper_language "$whisper_log" "$WHISPER_LANG")"
             echo "DETECTED LANGUAGE: $detected_lang"
             if [ "$detected_lang" = "en" ]; then
                 notify_file_progress "$src" "$i" "语义分句" 90 "正在整理"
