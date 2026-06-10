@@ -10,7 +10,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 . "$(dirname "$0")/orb_popover.sh"
 
 MODEL="$HOME/whisper-models/ggml-large-v3-turbo.bin"
-WHISPER_LANG="auto"
+WHISPER_LANG="en"
 WHISPER_MODEL_SLOT_COUNT=1
 LLM_SEGMENTATION_ENABLED=1
 LLM_OPENROUTER_API_KEY=""
@@ -29,7 +29,9 @@ try:
     with open(sys.argv[1]) as f:
         cfg = json.load(f)
     model_file = cfg.get("whisperModel", "ggml-large-v3-turbo.bin")
-    lang = cfg.get("whisperLang", "auto")
+    lang = cfg.get("whisperLang", "en")
+    if lang not in {"zh", "en", "ko", "ja"}:
+        lang = "en"
     seg = 1 if cfg.get("llmSegmentationEnabled", True) else 0
     trans = 1 if cfg.get("llmTranslationEnabled", True) else 0
     llm_model = cfg.get("llmModel", "mimo-v2.5")
@@ -312,36 +314,13 @@ print(int(latest))
 PY
 }
 
-parse_whisper_language() {
-    local log_path="$1"
-    [ -s "$log_path" ] || {
-        printf "en"
-        return 0
-    }
-
-    /usr/bin/python3 - "$log_path" <<'PY'
-import re
-import sys
-
-language = "en"
-pattern = re.compile(r"auto-detected language:\s*([A-Za-z_-]+)")
-with open(sys.argv[1], "r", encoding="utf-8", errors="ignore") as f:
-    for line in f:
-        match = pattern.search(line)
-        if match:
-            language = re.split(r"[-_]", match.group(1), 1)[0].lower()
-print(language)
-PY
-}
-
 resolve_whisper_language() {
-    local log_path="$1"
-    local configured_language="${2:-auto}"
-    if [ -n "$configured_language" ] && [ "$configured_language" != "auto" ]; then
-        printf "%s" "$configured_language"
-        return 0
-    fi
-    parse_whisper_language "$log_path"
+    local _log_path="$1"
+    local configured_language="${2:-en}"
+    case "$configured_language" in
+        zh|en|ko|ja) printf "%s" "$configured_language" ;;
+        *) printf "en" ;;
+    esac
 }
 
 smooth_eta_text() {
@@ -867,16 +846,17 @@ import unicodedata
 
 MAX_LINE_WIDTH = 24.0
 MAX_CUE_WIDTH = 46.0
-MAX_CUE_MS = 5000
 MIN_CUE_MS = 900
 SHORT_CUE_JOIN_GAP_MS = 500
 NO_LINE_START = set("，。！？；：、,.!?;:%)]}》」』”’")
 TOKEN_RE = re.compile(
     r"[A-Za-zÀ-ÖØ-öø-ÿĀ-ɏ0-9]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿĀ-ɏ0-9]+)?"
     r"|[\u0400-\u052f]+"
-    r"|[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]"
+    r"|[\uac00-\ud7af]+"
+    r"|[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff]"
 )
-CJK_TOKEN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
+REPEAT_BOUNDARY_PUNCTUATION = set("，。！？；：、,.!?;:")
+WORD_TRAILING_PUNCTUATION = set("，。！？；：、,.!?;:%)]}》」』”’")
 WEAK_END_WORDS = {
     "a", "an", "the", "to", "for", "of", "in", "on", "at", "with", "from", "by",
     "and", "or", "but", "so", "because", "if", "when", "while", "as", "than",
@@ -888,7 +868,10 @@ WEAK_END_WORDS = {
 
 path = sys.argv[1]
 source_lang = (sys.argv[2] if len(sys.argv) > 2 else "en").lower()
-english_like = source_lang in ("", "auto", "en")
+if source_lang not in ("zh", "en", "ko", "ja"):
+    source_lang = "en"
+english_like = source_lang == "en"
+uses_word_spacing = source_lang in ("en", "ko")
 
 def parse_time(value):
     match = re.match(r"(\d+):(\d{2}):(\d{2}),(\d{3})", value.strip())
@@ -919,7 +902,8 @@ def join_text(left, right):
         return left
     if left[-1].isspace() or right[0].isspace():
         return left + right
-    if re.search(r"[A-Za-z0-9]$", left) and re.search(r"^[A-Za-z0-9]", right):
+    if uses_word_spacing and right[0].isalnum() \
+            and (left[-1].isalnum() or left[-1] in WORD_TRAILING_PUNCTUATION):
         return left + " " + right
     return left + right
 
@@ -996,9 +980,16 @@ def clean_text(lines):
 def text_tokens(text):
     return TOKEN_RE.findall(text)
 
+def minimum_repeated_tokens(text):
+    if source_lang in ("zh", "ja"):
+        return 12
+    if source_lang == "ko":
+        return 6
+    return 8
+
 def repetition_key(text):
     tokens = text_tokens(text)
-    if len(tokens) < 5:
+    if len(tokens) < minimum_repeated_tokens(text):
         return ""
     return " ".join(
         token.lower().replace("’", "'").strip(".,!?;:，。！？；：")
@@ -1006,7 +997,7 @@ def repetition_key(text):
     )
 
 def collapse_repeated_phrase_text(text):
-    min_repeated_tokens = 8 if CJK_TOKEN_RE.search(text) else 5
+    min_repeated_tokens = minimum_repeated_tokens(text)
     changed = True
     while changed:
         changed = False
@@ -1024,7 +1015,12 @@ def collapse_repeated_phrase_text(text):
                     continue
                 remove_start = matches[start + run_length].start()
                 remove_end = matches[start + run_length * 2 - 1].end()
-                text = join_text(text[:remove_start].rstrip(), text[remove_end:].lstrip())
+                left = text[:remove_start].rstrip()
+                right = text[remove_end:].lstrip()
+                if left and right and left[-1] in REPEAT_BOUNDARY_PUNCTUATION \
+                        and right[0] in REPEAT_BOUNDARY_PUNCTUATION:
+                    left = left.rstrip("".join(REPEAT_BOUNDARY_PUNCTUATION)).rstrip()
+                text = join_text(left, right)
                 text = re.sub(r"\s+", " ", text).strip()
                 changed = True
                 break
@@ -1101,17 +1097,26 @@ def split_text(text):
         cues.append(current)
     return cues or [text]
 
+def coalesce_chunks(chunks, max_count):
+    if len(chunks) <= max_count:
+        return chunks
+
+    groups = []
+    for index in range(max_count):
+        lower = index * len(chunks) // max_count
+        upper = (index + 1) * len(chunks) // max_count
+        combined = ""
+        for chunk in chunks[lower:upper]:
+            combined = join_text(combined, chunk)
+        groups.append(combined)
+    return groups
+
 def wrap_lines(text):
     if width(text) <= MAX_LINE_WIDTH:
         return [text]
 
     lines = split_by_width(text, MAX_LINE_WIDTH)
-    if len(lines) <= 2:
-        return lines
-
-    # The text splitter should normally prevent this. Keep a hard fallback so
-    # a malformed or punctuation-free line cannot become a subtitle wall.
-    return lines[:2]
+    return lines or [text]
 
 def parse_blocks(raw):
     blocks = re.split(r"\n\s*\n", raw.strip(), flags=re.MULTILINE)
@@ -1227,32 +1232,27 @@ if english_like:
 
 out = []
 for start, end, text in blocks:
-    chunks = split_text(text)
     duration = end - start
-    total_weight = max(sum(max(width(chunk), 1.0) for chunk in chunks), 1.0)
+    chunks = coalesce_chunks(split_text(text), max(1, duration))
+    weights = [max(width(chunk), 1.0) for chunk in chunks]
+    remaining_weight = max(sum(weights), 1.0)
     cursor = start
 
     for index, chunk in enumerate(chunks):
         if index == len(chunks) - 1:
             chunk_end = end
         else:
-            share = max(width(chunk), 1.0) / total_weight
-            chunk_ms = max(MIN_CUE_MS, min(MAX_CUE_MS, int(duration * share)))
             remaining_chunks = len(chunks) - index - 1
-            latest_end = end - remaining_chunks * MIN_CUE_MS
-            chunk_end = min(cursor + chunk_ms, latest_end)
-            if chunk_end <= cursor:
-                chunk_end = min(end, cursor + MIN_CUE_MS)
+            available = end - cursor
+            minimum_ms = MIN_CUE_MS if available >= MIN_CUE_MS * (remaining_chunks + 1) else 1
+            ideal_ms = int(round(available * weights[index] / remaining_weight))
+            maximum_ms = available - remaining_chunks
+            chunk_ms = min(max(minimum_ms, ideal_ms), maximum_ms)
+            chunk_end = cursor + chunk_ms
 
-        if chunk_end - cursor > MAX_CUE_MS and len(chunks) == 1:
-            chunk_end = min(end, cursor + MAX_CUE_MS)
-
-        out.append((cursor, max(cursor + 1, chunk_end), wrap_lines(chunk)))
+        out.append((cursor, chunk_end, wrap_lines(chunk)))
         cursor = chunk_end
-
-    if out and out[-1][1] < end:
-        last_start, _last_end, last_lines = out[-1]
-        out[-1] = (last_start, end, last_lines)
+        remaining_weight -= weights[index]
 
 if english_like:
     out = merge_weak_output_cues(out)

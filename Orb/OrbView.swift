@@ -330,14 +330,9 @@ struct OrbView: View {
                 Section("字幕设置") {
                     LabeledContent {
                         Picker("", selection: subtitleWhisperLangBinding) {
-                            Text("自动检测").tag("auto")
-                            Text("英语").tag("en")
-                            Text("中文").tag("zh")
-                            Text("日语").tag("ja")
-                            Text("韩语").tag("ko")
-                            Text("法语").tag("fr")
-                            Text("德语").tag("de")
-                            Text("西班牙语").tag("es")
+                            ForEach(SubtitleConfiguration.supportedWhisperLanguages) { language in
+                                Text(language.displayName).tag(language.code)
+                            }
                         }
                     } label: {
                         Text("识别语言")

@@ -222,6 +222,13 @@ enum InputCorrectionConfiguration {
 }
 
 enum SubtitleConfiguration {
+    struct WhisperLanguageOption: Identifiable, Equatable {
+        let code: String
+        let displayName: String
+
+        var id: String { code }
+    }
+
     struct WhisperModelOption: Identifiable, Equatable {
         let filename: String
         let displayName: String
@@ -238,12 +245,19 @@ enum SubtitleConfiguration {
 
     static let configFilename = "subtitle-config.json"
 
-    static let defaultWhisperLang = "auto"
+    static let defaultWhisperLang = "en"
     static let defaultWhisperModel = "ggml-large-v3-turbo.bin"
     static let defaultLLMSegmentationEnabled = true
     static let defaultLLMTranslationEnabled = true
     static let defaultLLMModel = "mimo-v2.5"
     static let defaultLLMBaseURL = "https://opencode.ai/zen/go/v1/chat/completions"
+
+    static let supportedWhisperLanguages = [
+        WhisperLanguageOption(code: "zh", displayName: "中文"),
+        WhisperLanguageOption(code: "en", displayName: "英语"),
+        WhisperLanguageOption(code: "ko", displayName: "韩语"),
+        WhisperLanguageOption(code: "ja", displayName: "日语")
+    ]
 
     static let supportedWhisperModels = [
         WhisperModelOption(filename: "ggml-large-v3-turbo.bin", displayName: "large-v3-turbo"),
@@ -283,11 +297,24 @@ enum SubtitleConfiguration {
     }
 
     static func whisperLang() -> String {
-        UserDefaults.standard.string(forKey: whisperLangKey) ?? defaultWhisperLang
+        resolvedWhisperLanguage(
+            storedValue: UserDefaults.standard.string(forKey: whisperLangKey)
+        )
     }
 
     static func setWhisperLang(_ value: String) {
-        UserDefaults.standard.set(value, forKey: whisperLangKey)
+        UserDefaults.standard.set(
+            resolvedWhisperLanguage(storedValue: value),
+            forKey: whisperLangKey
+        )
+    }
+
+    static func resolvedWhisperLanguage(storedValue: String?) -> String {
+        guard let storedValue,
+              supportedWhisperLanguages.contains(where: { $0.code == storedValue }) else {
+            return defaultWhisperLang
+        }
+        return storedValue
     }
 
     static func whisperModel() -> String {
