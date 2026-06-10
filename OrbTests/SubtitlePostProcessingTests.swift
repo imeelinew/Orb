@@ -291,6 +291,37 @@ struct SubtitlePostProcessingTests {
         #expect(script.contains(#"WHISPER_LANG="auto""#))
     }
 
+    @Test func subtitleScriptUsesChinesePipelineInsteadOfBilingualEmbedding() throws {
+        let script = try subtitleScript()
+
+        #expect(script.contains("subtitle_pipeline.py"))
+        #expect(script.contains("--output \"$srt\""))
+        #expect(script.contains("--report \"$pipeline_report\""))
+        #expect(!script.contains("BILINGUAL TRANSLATED"))
+    }
+
+    @Test func subtitlePipelineSelfTestPasses() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let pipelineURL = repoRoot.appendingPathComponent("Resources/Scripts/subtitle_pipeline.py")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [pipelineURL.path, "--self-test"]
+
+        let output = Pipe()
+        let error = Pipe()
+        process.standardOutput = output
+        process.standardError = error
+
+        try process.run()
+        process.waitUntilExit()
+
+        let stdout = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        #expect(process.terminationStatus == 0, "subtitle_pipeline self-test failed: \(stdout)\(stderr)")
+    }
+
     private func subtitleScript() throws -> String {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

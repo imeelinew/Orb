@@ -353,8 +353,7 @@ struct OrbView: View {
                         Text("Whisper 模型")
                     }
 
-                    Toggle("语义断句", isOn: subtitleLLMSegmentationBinding)
-                    Toggle("双语翻译", isOn: subtitleLLMTranslationBinding)
+                    Toggle("LLM 审稿", isOn: subtitleLLMTranslationBinding)
 
                     if subtitleLLMControlsVisible {
                         VStack(alignment: .leading, spacing: 4) {
@@ -364,7 +363,7 @@ struct OrbView: View {
                             ) {
                                 Label("LLM 模型", systemImage: "cpu")
                             }
-                            Text("用于语义断句和翻译的 LLM 模型名称。")
+                            Text("用于字幕审稿和简体中文编辑的 LLM 模型名称。")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }

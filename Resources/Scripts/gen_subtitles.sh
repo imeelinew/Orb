@@ -18,7 +18,7 @@ LLM_OPENROUTER_BASE_URL="https://opencode.ai/zen/go/v1/chat/completions"
 LLM_OPENROUTER_MODEL="mimo-v2.5"
 LLM_SEGMENTATION_BATCH_SIZE=160
 LLM_TRANSLATION_ENABLED=1
-LLM_TRANSLATION_BATCH_CUES=80
+LLM_TRANSLATION_BATCH_CUES=50
 LLM_TRANSLATION_CONTEXT_CUES=8
 
 CONFIG_FILE="$(dirname "$0")/subtitle-config.json"
@@ -59,6 +59,7 @@ tmp_base=""
 tmp_wav=""
 srt=""
 whisper_log=""
+pipeline_report=""
 child_pid=""
 whisper_model_slot_dir=""
 POSTPROCESS_ESTIMATE_SECONDS=8
@@ -1796,7 +1797,8 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     }
     tmp_wav="${tmp_base}.wav"
     srt="${tmp_base}.srt"
-    whisper_log="${tmp_base}.whisper.log"
+    whisper_log="${tmp_base}.pipeline.log"
+    pipeline_report="${stem}.subtitle-report.json"
     displayed_eta=""
 
     notify_file_progress "$src" "$i" "抽取音频" 5 "$ETA_ESTIMATING_TEXT"
@@ -1809,15 +1811,28 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     child_pid=""
     if [ "$ffmpeg_status" -eq 0 ]; then
         acquire_whisper_model_slot "$i"
-        notify_file_progress "$src" "$i" "识别字幕" 12 "$ETA_ESTIMATING_TEXT"
-        echo "--- whisper-cli: $src"
+        notify_file_progress "$src" "$i" "生成简中字幕" 12 "$ETA_ESTIMATING_TEXT"
+        echo "--- subtitle pipeline: $src"
         whisper_start_ts=$(/bin/date +%s)
-        whisper_est=$((file_work / 13 + 2))
-        [ "$whisper_est" -lt 6 ] && whisper_est=6
+        whisper_est=$((file_work / 10 + 8))
+        [ "$whisper_est" -lt 10 ] && whisper_est=10
 
-        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$tmp_base" > >(/usr/bin/tee -a "$whisper_log") 2>&1 &
+        pipeline_api_key="$LLM_OPENROUTER_API_KEY"
+        [ "$LLM_TRANSLATION_ENABLED" = "1" ] || pipeline_api_key=""
+        "$(dirname "$0")/subtitle_pipeline.py" \
+            --audio "$tmp_wav" \
+            --source-video "$src" \
+            --model "$MODEL" \
+            --language "$WHISPER_LANG" \
+            --output "$srt" \
+            --report "$pipeline_report" \
+            --llm-base-url "$LLM_OPENROUTER_BASE_URL" \
+            --llm-model "$LLM_OPENROUTER_MODEL" \
+            --api-key "$pipeline_api_key" \
+            --batch-size "$LLM_TRANSLATION_BATCH_CUES" \
+            > >(/usr/bin/tee -a "$whisper_log") 2>&1 &
         child_pid=$!
-        write_job_state "recognize-subtitles" "$child_pid"
+        write_job_state "generate-chinese-subtitles" "$child_pid"
         while kill -0 "$child_pid" 2>/dev/null; do
             /bin/sleep 2
             kill -0 "$child_pid" 2>/dev/null || break
@@ -1831,45 +1846,15 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
             fi
             [ "$whisper_percent" -gt 88 ] && whisper_percent=88
             [ "$whisper_percent" -lt 12 ] && whisper_percent=12
-            write_job_state "recognize-subtitles" "$child_pid"
-            notify_file_progress "$src" "$i" "识别字幕" "$whisper_percent" "$remaining_text"
+            write_job_state "generate-chinese-subtitles" "$child_pid"
+            notify_file_progress "$src" "$i" "生成简中字幕" "$whisper_percent" "$remaining_text"
         done
         wait "$child_pid"
-        whisper_status=$?
+        pipeline_status=$?
         child_pid=""
         release_whisper_model_slot
 
-        if [ "$whisper_status" -eq 0 ]; then
-            detected_lang="$(resolve_whisper_language "$whisper_log" "$WHISPER_LANG")"
-            echo "DETECTED LANGUAGE: $detected_lang"
-            if [ "$detected_lang" = "en" ]; then
-                notify_file_progress "$src" "$i" "语义分句" 90 "正在整理"
-                if semantic_segment_srt "$srt"; then
-                    echo "SEMANTIC SEGMENTED: $srt"
-                else
-                    echo "WARN semantic segmentation failed, using local normalization: $srt"
-                fi
-            else
-                echo "SKIP semantic segmentation for non-English language: $detected_lang"
-            fi
-            notify_file_progress "$src" "$i" "整理字幕" 92 "即将完成"
-            write_job_state "normalize-subtitles"
-            if normalize_srt "$srt" "$detected_lang"; then
-                echo "NORMALIZED: $srt"
-            else
-                echo "WARN normalize failed, keeping original: $srt"
-            fi
-            if [[ "$detected_lang" == zh* ]]; then
-                echo "SKIP bilingual translation for Chinese source language: $detected_lang"
-            else
-                notify_file_progress "$src" "$i" "翻译字幕" 93 "正在整理"
-                write_job_state "translate-subtitles"
-                if translate_srt_to_bilingual "$srt" "$detected_lang"; then
-                    echo "BILINGUAL TRANSLATED: $srt"
-                else
-                    echo "WARN bilingual translation failed, keeping source-language subtitles: $srt"
-                fi
-            fi
+        if [ "$pipeline_status" -eq 0 ]; then
             notify_file_progress "$src" "$i" "封装字幕" 96 "即将完成"
             if embed_subtitles "$src" "$srt"; then
                 ok=$((ok+1))
@@ -1886,9 +1871,12 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
                     echo "FAIL embed subtitles: $src"
                 fi
             fi
+        elif [ "$pipeline_status" -eq 3 ]; then
+            fail=$((fail+1))
+            echo "FAIL subtitle quality gate: $src"
         else
             fail=$((fail+1))
-            echo "FAIL whisper: $src"
+            echo "FAIL subtitle pipeline: $src"
         fi
     else
         fail=$((fail+1))
@@ -1902,6 +1890,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     tmp_wav=""
     srt=""
     whisper_log=""
+    pipeline_report=""
     processed_work_units=$((processed_work_units + file_work))
 done
 
