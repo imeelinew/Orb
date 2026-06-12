@@ -18,39 +18,24 @@ LLM_OPENROUTER_BASE_URL="https://opencode.ai/zen/go/v1/chat/completions"
 LLM_OPENROUTER_MODEL="mimo-v2.5"
 LLM_SEGMENTATION_BATCH_SIZE=160
 LLM_TRANSLATION_ENABLED=1
-LLM_TRANSLATION_BATCH_CUES=50
+LLM_TRANSLATION_BATCH_CUES=80
 LLM_TRANSLATION_CONTEXT_CUES=8
 
-CONFIG_FILE="$(dirname "$0")/subtitle-config.json"
-if [ -f "$CONFIG_FILE" ]; then
-    eval "$(/usr/bin/python3 - "$CONFIG_FILE" <<'PYCFG'
-import json, sys, shlex
-try:
-    with open(sys.argv[1]) as f:
-        cfg = json.load(f)
-    model_file = cfg.get("whisperModel", "ggml-large-v3-turbo.bin")
-    lang = cfg.get("whisperLang", "auto")
-    if lang not in {"auto", "zh", "en", "ko", "ja"}:
-        lang = "auto"
-    seg = 1 if cfg.get("llmSegmentationEnabled", True) else 0
-    trans = 1 if cfg.get("llmTranslationEnabled", True) else 0
-    llm_model = cfg.get("llmModel", "mimo-v2.5")
-    llm_url = cfg.get("llmBaseURL", "https://opencode.ai/zen/go/v1/chat/completions")
-    import os
-    model_path = os.path.expanduser(f"~/whisper-models/{model_file}")
-    print(f"MODEL={shlex.quote(model_path)}")
-    print(f"WHISPER_LANG={shlex.quote(lang)}")
-    print(f"LLM_SEGMENTATION_ENABLED={seg}")
-    print(f"LLM_TRANSLATION_ENABLED={trans}")
-    print(f"LLM_OPENROUTER_MODEL={shlex.quote(llm_model)}")
-    print(f"LLM_OPENROUTER_BASE_URL={shlex.quote(llm_url)}")
-except Exception:
-    pass
-PYCFG
-)"
+SECRETS_FILE=""
+for candidate in \
+    "$(dirname "$0")/subtitle-secrets.env" \
+    "$HOME/Library/Application Support/Orb/subtitle-secrets.env"
+do
+    [ -f "$candidate" ] && SECRETS_FILE="$candidate" && break
+done
+if [ -n "$SECRETS_FILE" ]; then
+    set -a
+    # shellcheck source=/dev/null
+    . "$SECRETS_FILE"
+    set +a
 fi
+LLM_OPENROUTER_API_KEY="${LLM_OPENROUTER_API_KEY:-}"
 
-LLM_OPENROUTER_API_KEY="$(/usr/bin/security find-generic-password -s com.eli.Orb -a subtitleLLMAPIKey -w 2>/dev/null || true)"
 STATE_DIR="$(dirname "$0")/subtitle-jobs"
 MODEL_SLOT_DIR="$STATE_DIR/model-slots"
 current_src=""
@@ -59,7 +44,6 @@ tmp_base=""
 tmp_wav=""
 srt=""
 whisper_log=""
-pipeline_report=""
 child_pid=""
 whisper_model_slot_dir=""
 POSTPROCESS_ESTIMATE_SECONDS=8
@@ -315,43 +299,26 @@ print(int(latest))
 PY
 }
 
-resolve_whisper_language() {
-    local _log_path="$1"
-    local configured_language="${2:-auto}"
-    case "$configured_language" in
-        zh|en|ko|ja) printf "%s" "$configured_language" ;;
-        auto)
-            [ -s "$_log_path" ] || {
-                printf "en"
-                return 0
-            }
-            /usr/bin/python3 - "$_log_path" <<'PY'
+parse_whisper_language() {
+    local log_path="$1"
+    [ -s "$log_path" ] || {
+        printf "en"
+        return 0
+    }
+
+    /usr/bin/python3 - "$log_path" <<'PY'
 import re
 import sys
 
-aliases = {
-    "chinese": "zh",
-    "mandarin": "zh",
-    "english": "en",
-    "korean": "ko",
-    "japanese": "ja",
-}
-supported = {"zh", "en", "ko", "ja"}
 language = "en"
-pattern = re.compile(r"auto-detected language:\s*([A-Za-z_-]+)", re.IGNORECASE)
+pattern = re.compile(r"auto-detected language:\s*([A-Za-z_-]+)")
 with open(sys.argv[1], "r", encoding="utf-8", errors="ignore") as f:
     for line in f:
         match = pattern.search(line)
-        if not match:
-            continue
-        raw = re.split(r"[-_]", match.group(1), 1)[0].lower()
-        candidate = aliases.get(raw, raw)
-        language = candidate if candidate in supported else "en"
+        if match:
+            language = re.split(r"[-_]", match.group(1), 1)[0].lower()
 print(language)
 PY
-            ;;
-        *) printf "en" ;;
-    esac
 }
 
 smooth_eta_text() {
@@ -877,17 +844,11 @@ import unicodedata
 
 MAX_LINE_WIDTH = 24.0
 MAX_CUE_WIDTH = 46.0
+MAX_CUE_MS = 5000
 MIN_CUE_MS = 900
 SHORT_CUE_JOIN_GAP_MS = 500
 NO_LINE_START = set("，。！？；：、,.!?;:%)]}》」』”’")
-TOKEN_RE = re.compile(
-    r"[A-Za-zÀ-ÖØ-öø-ÿĀ-ɏ0-9]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿĀ-ɏ0-9]+)?"
-    r"|[\u0400-\u052f]+"
-    r"|[\uac00-\ud7af]+"
-    r"|[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff]"
-)
-REPEAT_BOUNDARY_PUNCTUATION = set("，。！？；：、,.!?;:")
-WORD_TRAILING_PUNCTUATION = set("，。！？；：、,.!?;:%)]}》」』”’")
+TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?|[\u4e00-\u9fff]")
 WEAK_END_WORDS = {
     "a", "an", "the", "to", "for", "of", "in", "on", "at", "with", "from", "by",
     "and", "or", "but", "so", "because", "if", "when", "while", "as", "than",
@@ -899,10 +860,7 @@ WEAK_END_WORDS = {
 
 path = sys.argv[1]
 source_lang = (sys.argv[2] if len(sys.argv) > 2 else "en").lower()
-if source_lang not in ("zh", "en", "ko", "ja"):
-    source_lang = "en"
-english_like = source_lang == "en"
-uses_word_spacing = source_lang in ("en", "ko")
+english_like = source_lang in ("", "auto", "en")
 
 def parse_time(value):
     match = re.match(r"(\d+):(\d{2}):(\d{2}),(\d{3})", value.strip())
@@ -933,8 +891,7 @@ def join_text(left, right):
         return left
     if left[-1].isspace() or right[0].isspace():
         return left + right
-    if uses_word_spacing and right[0].isalnum() \
-            and (left[-1].isalnum() or left[-1] in WORD_TRAILING_PUNCTUATION):
+    if re.search(r"[A-Za-z0-9]$", left) and re.search(r"^[A-Za-z0-9]", right):
         return left + " " + right
     return left + right
 
@@ -1011,16 +968,9 @@ def clean_text(lines):
 def text_tokens(text):
     return TOKEN_RE.findall(text)
 
-def minimum_repeated_tokens(text):
-    if source_lang in ("zh", "ja"):
-        return 12
-    if source_lang == "ko":
-        return 6
-    return 8
-
 def repetition_key(text):
     tokens = text_tokens(text)
-    if len(tokens) < minimum_repeated_tokens(text):
+    if len(tokens) < 5:
         return ""
     return " ".join(
         token.lower().replace("’", "'").strip(".,!?;:，。！？；：")
@@ -1028,7 +978,7 @@ def repetition_key(text):
     )
 
 def collapse_repeated_phrase_text(text):
-    min_repeated_tokens = minimum_repeated_tokens(text)
+    min_repeated_tokens = 5
     changed = True
     while changed:
         changed = False
@@ -1046,12 +996,7 @@ def collapse_repeated_phrase_text(text):
                     continue
                 remove_start = matches[start + run_length].start()
                 remove_end = matches[start + run_length * 2 - 1].end()
-                left = text[:remove_start].rstrip()
-                right = text[remove_end:].lstrip()
-                if left and right and left[-1] in REPEAT_BOUNDARY_PUNCTUATION \
-                        and right[0] in REPEAT_BOUNDARY_PUNCTUATION:
-                    left = left.rstrip("".join(REPEAT_BOUNDARY_PUNCTUATION)).rstrip()
-                text = join_text(left, right)
+                text = join_text(text[:remove_start].rstrip(), text[remove_end:].lstrip())
                 text = re.sub(r"\s+", " ", text).strip()
                 changed = True
                 break
@@ -1128,26 +1073,17 @@ def split_text(text):
         cues.append(current)
     return cues or [text]
 
-def coalesce_chunks(chunks, max_count):
-    if len(chunks) <= max_count:
-        return chunks
-
-    groups = []
-    for index in range(max_count):
-        lower = index * len(chunks) // max_count
-        upper = (index + 1) * len(chunks) // max_count
-        combined = ""
-        for chunk in chunks[lower:upper]:
-            combined = join_text(combined, chunk)
-        groups.append(combined)
-    return groups
-
 def wrap_lines(text):
     if width(text) <= MAX_LINE_WIDTH:
         return [text]
 
     lines = split_by_width(text, MAX_LINE_WIDTH)
-    return lines or [text]
+    if len(lines) <= 2:
+        return lines
+
+    # The text splitter should normally prevent this. Keep a hard fallback so
+    # a malformed or punctuation-free line cannot become a subtitle wall.
+    return lines[:2]
 
 def parse_blocks(raw):
     blocks = re.split(r"\n\s*\n", raw.strip(), flags=re.MULTILINE)
@@ -1256,34 +1192,39 @@ with open(path, "r", encoding="utf-8-sig", errors="replace") as f:
 blocks = parse_blocks(source)
 if not blocks:
     sys.exit(0)
-blocks = [(start, end, collapse_repeated_phrase_text(text)) for start, end, text in blocks]
-blocks = remove_repeated_phrase_runs(blocks)
 if english_like:
+    blocks = [(start, end, collapse_repeated_phrase_text(text)) for start, end, text in blocks]
+    blocks = remove_repeated_phrase_runs(blocks)
     blocks = merge_short_cues(blocks)
 
 out = []
 for start, end, text in blocks:
+    chunks = split_text(text)
     duration = end - start
-    chunks = coalesce_chunks(split_text(text), max(1, duration))
-    weights = [max(width(chunk), 1.0) for chunk in chunks]
-    remaining_weight = max(sum(weights), 1.0)
+    total_weight = max(sum(max(width(chunk), 1.0) for chunk in chunks), 1.0)
     cursor = start
 
     for index, chunk in enumerate(chunks):
         if index == len(chunks) - 1:
             chunk_end = end
         else:
+            share = max(width(chunk), 1.0) / total_weight
+            chunk_ms = max(MIN_CUE_MS, min(MAX_CUE_MS, int(duration * share)))
             remaining_chunks = len(chunks) - index - 1
-            available = end - cursor
-            minimum_ms = MIN_CUE_MS if available >= MIN_CUE_MS * (remaining_chunks + 1) else 1
-            ideal_ms = int(round(available * weights[index] / remaining_weight))
-            maximum_ms = available - remaining_chunks
-            chunk_ms = min(max(minimum_ms, ideal_ms), maximum_ms)
-            chunk_end = cursor + chunk_ms
+            latest_end = end - remaining_chunks * MIN_CUE_MS
+            chunk_end = min(cursor + chunk_ms, latest_end)
+            if chunk_end <= cursor:
+                chunk_end = min(end, cursor + MIN_CUE_MS)
 
-        out.append((cursor, chunk_end, wrap_lines(chunk)))
+        if chunk_end - cursor > MAX_CUE_MS and len(chunks) == 1:
+            chunk_end = min(end, cursor + MAX_CUE_MS)
+
+        out.append((cursor, max(cursor + 1, chunk_end), wrap_lines(chunk)))
         cursor = chunk_end
-        remaining_weight -= weights[index]
+
+    if out and out[-1][1] < end:
+        last_start, _last_end, last_lines = out[-1]
+        out[-1] = (last_start, end, last_lines)
 
 if english_like:
     out = merge_weak_output_cues(out)
@@ -1797,8 +1738,7 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     }
     tmp_wav="${tmp_base}.wav"
     srt="${tmp_base}.srt"
-    whisper_log="${tmp_base}.pipeline.log"
-    pipeline_report="${stem}.subtitle-report.json"
+    whisper_log="${tmp_base}.whisper.log"
     displayed_eta=""
 
     notify_file_progress "$src" "$i" "抽取音频" 5 "$ETA_ESTIMATING_TEXT"
@@ -1811,28 +1751,15 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     child_pid=""
     if [ "$ffmpeg_status" -eq 0 ]; then
         acquire_whisper_model_slot "$i"
-        notify_file_progress "$src" "$i" "生成简中字幕" 12 "$ETA_ESTIMATING_TEXT"
-        echo "--- subtitle pipeline: $src"
+        notify_file_progress "$src" "$i" "识别字幕" 12 "$ETA_ESTIMATING_TEXT"
+        echo "--- whisper-cli: $src"
         whisper_start_ts=$(/bin/date +%s)
-        whisper_est=$((file_work / 10 + 8))
-        [ "$whisper_est" -lt 10 ] && whisper_est=10
+        whisper_est=$((file_work / 13 + 2))
+        [ "$whisper_est" -lt 6 ] && whisper_est=6
 
-        pipeline_api_key="$LLM_OPENROUTER_API_KEY"
-        [ "$LLM_TRANSLATION_ENABLED" = "1" ] || pipeline_api_key=""
-        "$(dirname "$0")/subtitle_pipeline.py" \
-            --audio "$tmp_wav" \
-            --source-video "$src" \
-            --model "$MODEL" \
-            --language "$WHISPER_LANG" \
-            --output "$srt" \
-            --report "$pipeline_report" \
-            --llm-base-url "$LLM_OPENROUTER_BASE_URL" \
-            --llm-model "$LLM_OPENROUTER_MODEL" \
-            --api-key "$pipeline_api_key" \
-            --batch-size "$LLM_TRANSLATION_BATCH_CUES" \
-            > >(/usr/bin/tee -a "$whisper_log") 2>&1 &
+        whisper-cli -m "$MODEL" -f "$tmp_wav" -l "$WHISPER_LANG" -ml 46 -osrt -of "$tmp_base" > >(/usr/bin/tee -a "$whisper_log") 2>&1 &
         child_pid=$!
-        write_job_state "generate-chinese-subtitles" "$child_pid"
+        write_job_state "recognize-subtitles" "$child_pid"
         while kill -0 "$child_pid" 2>/dev/null; do
             /bin/sleep 2
             kill -0 "$child_pid" 2>/dev/null || break
@@ -1846,15 +1773,45 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
             fi
             [ "$whisper_percent" -gt 88 ] && whisper_percent=88
             [ "$whisper_percent" -lt 12 ] && whisper_percent=12
-            write_job_state "generate-chinese-subtitles" "$child_pid"
-            notify_file_progress "$src" "$i" "生成简中字幕" "$whisper_percent" "$remaining_text"
+            write_job_state "recognize-subtitles" "$child_pid"
+            notify_file_progress "$src" "$i" "识别字幕" "$whisper_percent" "$remaining_text"
         done
         wait "$child_pid"
-        pipeline_status=$?
+        whisper_status=$?
         child_pid=""
         release_whisper_model_slot
 
-        if [ "$pipeline_status" -eq 0 ]; then
+        if [ "$whisper_status" -eq 0 ]; then
+            detected_lang="$(parse_whisper_language "$whisper_log")"
+            echo "DETECTED LANGUAGE: $detected_lang"
+            if [ "$detected_lang" = "en" ]; then
+                notify_file_progress "$src" "$i" "语义分句" 90 "正在整理"
+                if semantic_segment_srt "$srt"; then
+                    echo "SEMANTIC SEGMENTED: $srt"
+                else
+                    echo "WARN semantic segmentation failed, using local normalization: $srt"
+                fi
+            else
+                echo "SKIP semantic segmentation for non-English language: $detected_lang"
+            fi
+            notify_file_progress "$src" "$i" "整理字幕" 92 "即将完成"
+            write_job_state "normalize-subtitles"
+            if normalize_srt "$srt" "$detected_lang"; then
+                echo "NORMALIZED: $srt"
+            else
+                echo "WARN normalize failed, keeping original: $srt"
+            fi
+            if [[ "$detected_lang" == zh* ]]; then
+                echo "SKIP bilingual translation for Chinese source language: $detected_lang"
+            else
+                notify_file_progress "$src" "$i" "翻译字幕" 93 "正在整理"
+                write_job_state "translate-subtitles"
+                if translate_srt_to_bilingual "$srt" "$detected_lang"; then
+                    echo "BILINGUAL TRANSLATED: $srt"
+                else
+                    echo "WARN bilingual translation failed, keeping source-language subtitles: $srt"
+                fi
+            fi
             notify_file_progress "$src" "$i" "封装字幕" 96 "即将完成"
             if embed_subtitles "$src" "$srt"; then
                 ok=$((ok+1))
@@ -1871,12 +1828,9 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
                     echo "FAIL embed subtitles: $src"
                 fi
             fi
-        elif [ "$pipeline_status" -eq 3 ]; then
-            fail=$((fail+1))
-            echo "FAIL subtitle quality gate: $src"
         else
             fail=$((fail+1))
-            echo "FAIL subtitle pipeline: $src"
+            echo "FAIL whisper: $src"
         fi
     else
         fail=$((fail+1))
@@ -1890,7 +1844,6 @@ for (( i = 1; i <= ${#todo[@]}; i++ )); do
     tmp_wav=""
     srt=""
     whisper_log=""
-    pipeline_report=""
     processed_work_units=$((processed_work_units + file_work))
 done
 

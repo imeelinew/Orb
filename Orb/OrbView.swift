@@ -19,13 +19,6 @@ struct OrbView: View {
     @State private var inputCorrectionBaseURL = InputCorrectionConfiguration.baseURL()
     @State private var modelConnectionMessage: String?
     @State private var isTestingModelConnection = false
-    @State private var isTestingSubtitleConnection = false
-    @State private var subtitleConfigWriteCancellable: AnyCancellable?
-    @State private var subtitleLLMSegmentationEnabled = SubtitleConfiguration.llmSegmentationEnabled()
-    @State private var subtitleLLMTranslationEnabled = SubtitleConfiguration.llmTranslationEnabled()
-    @State private var subtitleLLMModel = SubtitleConfiguration.llmModel()
-    @State private var subtitleLLMBaseURL = SubtitleConfiguration.llmBaseURL()
-    @State private var subtitleLLMAPIKey = KeychainStore.string(for: KeychainStore.subtitleLLMAPIKeyAccount)
     @State private var modulesSearchText = ""
     @State private var contextMenuSearchText = ""
     @State private var windowOperationsSearchText = ""
@@ -283,9 +276,6 @@ struct OrbView: View {
             persistInputCorrectionEnabled()
             moveSelectionToModulesIfDisabled(OrbModuleID.inputCorrection, isEnabled: inputCorrectionEnabled)
         }
-        .onChange(of: subtitleLLMModel) { _, _ in scheduleSubtitleConfigWrite() }
-        .onChange(of: subtitleLLMBaseURL) { _, _ in scheduleSubtitleConfigWrite() }
-        .onChange(of: subtitleLLMAPIKey) { _, _ in scheduleSubtitleConfigWrite() }
         .onReceive(moduleHost.$enabledModuleIDs) { _ in
             syncEnabledStateFromModuleHost()
         }
@@ -324,78 +314,6 @@ struct OrbView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                    }
-                }
-
-                Section("字幕设置") {
-                    LabeledContent {
-                        Picker("", selection: subtitleWhisperLangBinding) {
-                            ForEach(SubtitleConfiguration.supportedWhisperLanguages) { language in
-                                Text(language.displayName).tag(language.code)
-                            }
-                        }
-                    } label: {
-                        Text("识别语言")
-                    }
-
-                    LabeledContent {
-                        if subtitleWhisperModels.isEmpty {
-                            Text("未安装模型")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Picker("", selection: subtitleWhisperModelBinding) {
-                                ForEach(subtitleWhisperModels) { model in
-                                    Text(model.displayName).tag(model.filename)
-                                }
-                            }
-                        }
-                    } label: {
-                        Text("Whisper 模型")
-                    }
-
-                    Toggle("LLM 审稿", isOn: subtitleLLMTranslationBinding)
-
-                    if subtitleLLMControlsVisible {
-                        VStack(alignment: .leading, spacing: 4) {
-                            TextField(
-                                text: $subtitleLLMModel,
-                                prompt: Text("mimo-v2.5")
-                            ) {
-                                Label("LLM 模型", systemImage: "cpu")
-                            }
-                            Text("用于字幕审稿和简体中文编辑的 LLM 模型名称。")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            TextField(
-                                text: $subtitleLLMBaseURL,
-                                prompt: Text("https://opencode.ai/zen/go/v1/chat/completions")
-                            ) {
-                                Label("API 地址", systemImage: "link")
-                            }
-                            Text("OpenAI 兼容的 chat completions 地址。")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            SecureField(
-                                text: $subtitleLLMAPIKey,
-                                prompt: Text("sk-...")
-                            ) {
-                                Label("API Key", systemImage: "key")
-                            }
-                            Text("用于访问 LLM 服务的 API Key。")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button(isTestingSubtitleConnection ? "测试中…" : "测试连接") {
-                            testSubtitleConnection()
-                        }
-                        .disabled(isTestingSubtitleConnection)
                     }
                 }
             }
@@ -707,92 +625,6 @@ struct OrbView: View {
 
     private func persistInputCorrectionEnabled() {
         InputCorrectionConfiguration.setEnabled(inputCorrectionEnabled)
-    }
-
-    private func scheduleSubtitleConfigWrite() {
-        subtitleConfigWriteCancellable?.cancel()
-        SubtitleConfiguration.setLLMModel(subtitleLLMModel.trimmingCharacters(in: .whitespacesAndNewlines))
-        SubtitleConfiguration.setLLMBaseURL(subtitleLLMBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-        try? KeychainStore.setString(
-            subtitleLLMAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
-            for: KeychainStore.subtitleLLMAPIKeyAccount
-        )
-        subtitleConfigWriteCancellable = Just(())
-            .delay(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { SubtitleConfiguration.writeConfig() }
-    }
-
-    private var subtitleWhisperLangBinding: Binding<String> {
-        Binding(
-            get: { SubtitleConfiguration.whisperLang() },
-            set: { newValue in
-                SubtitleConfiguration.setWhisperLang(newValue)
-                scheduleSubtitleConfigWrite()
-            }
-        )
-    }
-
-    private var subtitleWhisperModelBinding: Binding<String> {
-        Binding(
-            get: { SubtitleConfiguration.whisperModel() },
-            set: { newValue in
-                SubtitleConfiguration.setWhisperModel(newValue)
-                scheduleSubtitleConfigWrite()
-            }
-        )
-    }
-
-    private var subtitleWhisperModels: [SubtitleConfiguration.WhisperModelOption] {
-        SubtitleConfiguration.availableWhisperModels()
-    }
-
-    private var subtitleLLMSegmentationBinding: Binding<Bool> {
-        Binding(
-            get: { subtitleLLMSegmentationEnabled },
-            set: { newValue in
-                subtitleLLMSegmentationEnabled = newValue
-                SubtitleConfiguration.setLLMSegmentationEnabled(newValue)
-                scheduleSubtitleConfigWrite()
-            }
-        )
-    }
-
-    private var subtitleLLMTranslationBinding: Binding<Bool> {
-        Binding(
-            get: { subtitleLLMTranslationEnabled },
-            set: { newValue in
-                subtitleLLMTranslationEnabled = newValue
-                SubtitleConfiguration.setLLMTranslationEnabled(newValue)
-                scheduleSubtitleConfigWrite()
-            }
-        )
-    }
-
-    private var subtitleLLMControlsVisible: Bool {
-        subtitleLLMSegmentationEnabled || subtitleLLMTranslationEnabled
-    }
-
-    private func testSubtitleConnection() {
-        isTestingSubtitleConnection = true
-        let configuration = RemoteModelConfiguration(
-            apiKey: subtitleLLMAPIKey.trimmingCharacters(in: .whitespacesAndNewlines),
-            model: subtitleLLMModel.trimmingCharacters(in: .whitespacesAndNewlines),
-            baseURL: subtitleLLMBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-        Task {
-            do {
-                try await RemoteCorrectionClient().testConnection(configuration: configuration)
-                await MainActor.run {
-                    isTestingSubtitleConnection = false
-                    showToast("连接成功")
-                }
-            } catch {
-                await MainActor.run {
-                    isTestingSubtitleConnection = false
-                    showToast(error.localizedDescription, kind: .error)
-                }
-            }
-        }
     }
 
     private func moveSelectionToModulesIfDisabled(_ moduleID: String, isEnabled: Bool) {
